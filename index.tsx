@@ -41,11 +41,20 @@ interface SavedProject {
   style: StylePreset;
   quote: Quote | null;
   generatedImage: string | null;
+  overheadPercent: number;
+  contingencyPercent: number;
 }
 
 type Tab = 'quote' | 'render';
 type StylePreset = 'Modern' | 'Farmhouse' | 'Scandinavian' | 'Industrial' | 'Coastal' | 'Minimalist' | 'Bohemian' | 'Mid-Century Modern';
 type Theme = 'light' | 'dark';
+type Region = 'QC_MONTREAL' | 'ON_TORONTO' | 'NYC';
+
+const TAX_RATES: { [key in Region]: number } = {
+  QC_MONTREAL: 14.975,
+  ON_TORONTO: 13,
+  NYC: 8.875,
+};
 
 const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
   return (
@@ -61,7 +70,7 @@ const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [roomType, setRoomType] = useState('Kitchen');
-  const [region, setRegion] = useState('QC_MONTREAL');
+  const [region, setRegion] = useState<Region>('QC_MONTREAL');
   const [scope, setScope] = useState('');
   const [style, setStyle] = useState<StylePreset>('Modern');
   
@@ -78,6 +87,11 @@ const App: React.FC = () => {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
   const [bumpPercent, setBumpPercent] = useState('10');
+
+  const [overheadPercent, setOverheadPercent] = useState(10);
+  const [contingencyPercent, setContingencyPercent] = useState(5);
+  
+  const currentTaxRate = TAX_RATES[region];
 
   const sliderRef = useRef<HTMLInputElement>(null);
   const afterImageRef = useRef<HTMLImageElement>(null);
@@ -147,7 +161,7 @@ Analyze the attached image of a ${roomType} and the following scope of work to c
 
 The quote must be for LABOR AND INSTALLATION ONLY. It should cover standard consumables (e.g., screws, caulk) but explicitly exclude the cost of major materials (e.g., flooring, paint, tiles, fixtures).
 
-Provide quantities (sq ft, linear ft, count), unit rates, and totals. Calculate a summary with a 10% overhead, 5% contingency, and 13% tax. The summary must include a disclaimer about this being a labor-only quote.
+Provide quantities (sq ft, linear ft, count), unit rates, and totals. Calculate a summary with a ${overheadPercent}% overhead, ${contingencyPercent}% contingency, and the correct local tax for the ${region} area. The summary must include a disclaimer about this being a labor-only quote.
 
 Respond ONLY with a JSON object matching the provided schema.`;
 
@@ -195,7 +209,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
       });
 
       const quoteJson = JSON.parse(quoteResponse.text);
-      setQuote(quoteJson);
+      // Immediately recalculate with the frontend's source-of-truth tax rate
+      setQuote(recalculateQuote(quoteJson.lineItems, quoteJson.summary.disclaimer));
 
     } catch (err) {
       console.error(err);
@@ -267,6 +282,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
       style,
       quote,
       generatedImage,
+      overheadPercent,
+      contingencyPercent,
     };
 
     const otherProjects = savedProjects.filter(p => p.id !== newProject.id);
@@ -293,6 +310,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setCurrentProjectId(null);
         setError(null);
         setShowStyleSelector(false);
+        setOverheadPercent(10);
+        setContingencyPercent(5);
         return;
     }
     
@@ -302,7 +321,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setFile(null);
         setFilePreview(projectToLoad.filePreview);
         setRoomType(projectToLoad.roomType);
-        setRegion(projectToLoad.region);
+        setRegion(projectToLoad.region as Region);
         setScope(projectToLoad.scope);
         setStyle(projectToLoad.style);
         setQuote(projectToLoad.quote);
@@ -311,6 +330,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setError(null);
         setActiveTab('quote');
         setShowStyleSelector(!!projectToLoad.generatedImage);
+        setOverheadPercent(projectToLoad.overheadPercent ?? 10);
+        setContingencyPercent(projectToLoad.contingencyPercent ?? 5);
     }
   };
   
@@ -324,12 +345,13 @@ Respond ONLY with a JSON object matching the provided schema.`;
     }
   };
   
-  const recalculateQuote = (lineItems: LineItem[]): Quote => {
+  const recalculateQuote = (lineItems: LineItem[], disclaimer?: string): Quote => {
       const subtotal = lineItems.reduce((acc, item) => acc + item.total, 0);
-      const overhead = subtotal * 0.10;
-      const contingency = subtotal * 0.05;
-      const tax = (subtotal + overhead + contingency) * 0.13;
-      const grandTotal = subtotal + overhead + contingency + tax;
+      const overhead = subtotal * (overheadPercent / 100);
+      const contingency = subtotal * (contingencyPercent / 100);
+      const preTaxTotal = subtotal + overhead + contingency;
+      const tax = preTaxTotal * (currentTaxRate / 100);
+      const grandTotal = preTaxTotal + tax;
 
       return {
           lineItems,
@@ -339,10 +361,16 @@ Respond ONLY with a JSON object matching the provided schema.`;
               contingency,
               tax,
               grandTotal,
-              disclaimer: quote?.summary.disclaimer || "This is a labor-only quote and does not include major materials."
+              disclaimer: disclaimer || quote?.summary.disclaimer || "This is a labor-only quote and does not include major materials."
           }
       };
   };
+
+  useEffect(() => {
+    if (quote) {
+      setQuote(recalculateQuote(quote.lineItems));
+    }
+  }, [overheadPercent, contingencyPercent, region]);
 
   const handleItemChange = (index: number, field: keyof LineItem, value: string | number) => {
     if (!quote) return;
@@ -415,9 +443,9 @@ Respond ONLY with a JSON object matching the provided schema.`;
     // Add summary
     csvContent += "\n\n";
     csvContent += `Subtotal,${quote.summary.subtotal.toFixed(2)}\n`;
-    csvContent += `Overhead (10%),${quote.summary.overhead.toFixed(2)}\n`;
-    csvContent += `Contingency (5%),${quote.summary.contingency.toFixed(2)}\n`;
-    csvContent += `Tax (13%),${quote.summary.tax.toFixed(2)}\n`;
+    csvContent += `Overhead (${overheadPercent}%),${quote.summary.overhead.toFixed(2)}\n`;
+    csvContent += `Contingency (${contingencyPercent}%),${quote.summary.contingency.toFixed(2)}\n`;
+    csvContent += `Tax (${currentTaxRate}%),${quote.summary.tax.toFixed(2)}\n`;
     csvContent += `Grand Total,${quote.summary.grandTotal.toFixed(2)}\n`;
 
     const encodedUri = encodeURI(csvContent);
@@ -488,7 +516,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         </div>
         
         <div className="form-group">
-            <Tooltip text="Select the room type and metropolitan area. <br><b>AI Pro Tip:</b> This is crucial! The AI researches real, current labor rates for your selected region to ensure the quote is realistic.">
+            <Tooltip text="Select the room type and metropolitan area. <br><b>AI Pro Tip:</b> This is crucial! The AI researches real, current labor rates and sets the correct local sales tax for your selected region.">
                 <label>Room & Location</label>
             </Tooltip>
             <div style={{display: 'flex', gap: '1rem'}}>
@@ -498,7 +526,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                     <option>Bedroom</option>
                     <option>Other</option>
                 </select>
-                <select value={region} onChange={e => setRegion(e.target.value)}>
+                <select value={region} onChange={e => setRegion(e.target.value as Region)}>
                     <option value="QC_MONTREAL">Montreal, QC</option>
                     <option value="ON_TORONTO">Toronto, ON</option>
                     <option value="NYC">New York, NY</option>
@@ -549,6 +577,12 @@ Respond ONLY with a JSON object matching the provided schema.`;
 
       <section className="panel output-panel">
         <div className="printable-area">
+          <div className="printable-header">
+            <h1>AI Renovation Quoter</h1>
+            {projectName && <h2>Estimate for: {projectName}</h2>}
+            <p className="printable-date">Date: {new Date().toLocaleDateString()}</p>
+          </div>
+
           {!quote && !generatedImage && !isQuoteLoading && !isRenderLoading && !error && (
               <div className="placeholder">
                   <span className="material-icons-outlined">dynamic_feed</span>
@@ -577,10 +611,10 @@ Respond ONLY with a JSON object matching the provided schema.`;
                 <button className={`tab-btn ${activeTab === 'render' ? 'active' : ''}`} onClick={() => setActiveTab('render')} disabled={!generatedImage}>Renders</button>
               </div>
               
-              <div style={{display: activeTab === 'quote' ? 'block' : 'none'}}>
+              <div id="printable-quote-content" style={{display: activeTab === 'quote' ? 'block' : 'none'}}>
                 {quote && (
                   <div className="tab-content">
-                    <h2>Estimate for: {projectName}</h2>
+                    <h2 className="no-print">Estimate for: {projectName}</h2>
                     <table className="quote-table">
                       <thead>
                         <tr>
@@ -637,9 +671,39 @@ Respond ONLY with a JSON object matching the provided schema.`;
                         <table className="summary-table">
                             <tbody>
                                 <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
-                                <tr><td>Overhead (10%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td></tr>
-                                <tr><td>Contingency (5%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td></tr>
-                                <tr><td>Tax (13%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td></tr>
+                                <tr>
+                                    <td>
+                                        <div className="summary-label-group" data-percentage={overheadPercent}>
+                                            <span>Overhead</span>
+                                            <div className="input-group summary-input">
+                                                <input type="number" value={overheadPercent} onChange={e => setOverheadPercent(parseFloat(e.target.value) || 0)} />
+                                                <span>%</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                        <div className="summary-label-group" data-percentage={contingencyPercent}>
+                                            <span>Contingency</span>
+                                            <div className="input-group summary-input">
+                                                <input type="number" value={contingencyPercent} onChange={e => setContingencyPercent(parseFloat(e.target.value) || 0)} />
+                                                <span>%</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td>
+                                </tr>
+                                <tr>
+                                    <td>
+                                      <div className="summary-label-group" data-percentage={currentTaxRate}>
+                                          <span>Tax</span>
+                                          <span className="tax-rate-display">({currentTaxRate}%)</span>
+                                      </div>
+                                    </td>
+                                    <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td>
+                                </tr>
                                 <tr className="total"><td>Grand Total</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.grandTotal)}</td></tr>
                             </tbody>
                         </table>
@@ -647,10 +711,10 @@ Respond ONLY with a JSON object matching the provided schema.`;
                   </div>
                 )}
               </div>
-              <div style={{display: activeTab === 'render' ? 'block' : 'none'}}>
+              <div id="printable-render-content" style={{display: activeTab === 'render' ? 'block' : 'none'}}>
                 {generatedImage && (
                   <div className="tab-content render-view">
-                    <h2>Before & After: {projectName}</h2>
+                    <h2 className="no-print">Before & After: {projectName}</h2>
                     {filePreview && generatedImage ? (
                       <div className="before-after-slider">
                         <img src={generatedImage} id="after-image" ref={afterImageRef} alt="After render"/>

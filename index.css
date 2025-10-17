@@ -517,6 +517,8 @@ body.dark-theme .remove-item-btn:hover {
     padding: 0.5rem;
     width: 60px;
     text-align: right;
+    background-color: var(--surface-color);
+    color: var(--text-color);
 }
 
 .input-group input:focus {
@@ -579,11 +581,32 @@ body.dark-theme .remove-item-btn:hover {
 
 .summary-table {
   width: 100%;
-  max-width: 350px;
+  max-width: 450px;
 }
 
 .summary-table td {
   padding: 0.5rem 1rem;
+  vertical-align: middle;
+}
+
+.summary-label-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.summary-input {
+    font-size: 0.8rem;
+}
+.summary-input input {
+    width: 50px;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.875rem;
+}
+
+.tax-rate-display {
+    font-size: 0.875rem;
+    color: var(--light-text-color);
 }
 
 .summary-table tr.total td {
@@ -737,6 +760,10 @@ body.dark-theme .loading-spinner {
   transition: none;
 }
 
+.printable-header {
+  display: none;
+}
+
 
 @keyframes spin {
   to { transform: rotate(360deg); }
@@ -860,10 +887,157 @@ body.dark-theme .loading-spinner {
     padding: 0;
     width: 100%;
   }
-  .quote-table, .summary-table {
-    width: 100%;
+  
+  #printable-quote-content {
+    display: block !important;
   }
-  h1, h2 {
+
+  #printable-render-content {
+    display: none !important;
+  }
+
+  .printable-header {
+    display: block;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #666;
+    text-align: center;
+  }
+  .printable-header h1 {
+    font-size: 24pt;
     color: #000;
+    justify-content: center;
+  }
+  .printable-header h2 {
+    font-size: 16pt;
+    color: #333;
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
+  .printable-header .printable-date {
+    font-size: 12pt;
+    color: #555;
+    margin-top: 0.5rem;
+  }
+  .printable-header .material-icons-outlined {
+    display: none;
+  }
+
+  /* Professional Table Layout for Printing */
+  .quote-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+    page-break-inside: auto;
+  }
+  .quote-table thead {
+    display: table-header-group; /* Ensures header repeats on new pages */
+  }
+  .quote-table th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold;
+    padding: 0.5rem;
+    text-align: left;
+    border: 1px solid #ccc;
+    color: #000;
+  }
+  .quote-table tr {
+    page-break-inside: avoid;
+  }
+  .quote-table td {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    vertical-align: top;
+    font-size: 10pt;
+  }
+  .quote-table .editable-cell {
+    border: none;
+    background: none;
+    padding: 0;
+    width: 100%;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    font-size: inherit;
+    font-family: inherit;
+    color: #000;
+  }
+  .quote-table td:nth-child(2) .editable-cell,
+  .quote-table td:nth-child(3),
+  .quote-table td:nth-child(4) .editable-cell,
+  .quote-table td:nth-child(5) .editable-cell {
+      text-align: right;
+  }
+  .quote-table .remove-col {
+    display: none;
+  }
+  .quote-table td::before {
+    display: none;
+  }
+
+  /* Nicer Summary */
+  .quote-summary {
+    page-break-before: auto;
+    page-break-inside: avoid;
+    margin-top: 2rem;
+    align-items: flex-end;
+  }
+  .summary-table {
+    width: 100%;
+    max-width: 350px;
+  }
+  .summary-table td { font-size: 11pt; padding: 0.6rem 1rem; }
+  .summary-input { display: none; }
+  .tax-rate-display { display: none; }
+  .summary-label-group span:first-child::after {
+    content: ' (' attr(data-percentage) '%)';
+  }
+  .summary-table tr.total td {
+    font-size: 14pt;
+    font-weight: bold;
+    border-top: 2px solid #000;
+  }
+  .disclaimer {
+    text-align: left;
+    max-width: none;
+    margin-bottom: 1rem;
+    font-size: 9pt;
+  }
+  
+  /* Print Render View */
+  .render-view {
+    padding: 1rem;
+  }
+  .before-after-slider {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    box-shadow: none;
+    border: none;
+    aspect-ratio: auto;
+  }
+  .before-after-slider img {
+    position: static;
+    width: 100%;
+    height: auto;
+    clip-path: none !important;
+    border: 1px solid #ccc;
+  }
+  .before-after-slider img::before {
+    display: block;
+    font-size: 14pt;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: #000;
+  }
+  #before-image::before {
+    content: 'Before';
+  }
+  #after-image::before {
+    content: 'After';
+  }
+  .before-after-slider input, .before-after-slider .slider-handle {
+    display: none;
   }
 }
