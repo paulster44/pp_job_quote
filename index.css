@@ -429,6 +429,42 @@ body.dark-theme .btn.btn-secondary:disabled {
   text-align: right;
 }
 
+.quote-table th.remove-col, .quote-table td.remove-col {
+    width: 50px;
+    text-align: center;
+}
+
+.remove-item-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--light-text-color);
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out, background-color 0.2s, color 0.2s;
+}
+
+.quote-table tr:hover .remove-item-btn {
+    opacity: 1;
+}
+
+.remove-item-btn:hover {
+    background-color: var(--error-color);
+    color: white;
+}
+
+body.dark-theme .remove-item-btn:hover {
+    color: var(--surface-color);
+}
+
+.remove-item-btn .material-icons-outlined {
+    font-size: 1.125rem;
+}
+
 .quote-actions {
     margin-bottom: 2rem;
 }
@@ -740,15 +776,16 @@ body.dark-theme .loading-spinner {
     border-radius: 8px;
     padding: 0;
     overflow: hidden;
+    background-color: var(--surface-color);
+    position: relative;
   }
 
   .quote-table td {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 1rem;
-    text-align: right;
-    border-bottom: 1px dashed var(--border-color);
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--bg-color);
   }
 
   .quote-table tr td:last-child {
@@ -761,10 +798,28 @@ body.dark-theme .loading-spinner {
     text-align: left;
     padding-right: 1rem;
     color: var(--light-text-color);
+    flex-shrink: 0;
   }
 
+  .quote-table td.remove-col {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    padding: 0;
+    border: none;
+    background: none;
+  }
+  .quote-table td.remove-col::before {
+    display: none;
+  }
+  .quote-table .remove-item-btn {
+    opacity: 1;
+  }
+
+
   .quote-table td:nth-child(1) {
-    padding: 0.75rem 1rem;
+    padding: 0.8rem 3rem 0.8rem 1rem;
     border-bottom: 1px solid var(--border-color);
     background-color: var(--bg-color);
   }
@@ -775,13 +830,15 @@ body.dark-theme .loading-spinner {
   
   .quote-table td:nth-child(1) .editable-cell {
     font-weight: bold;
-    font-size: 1.05rem;
+    font-size: 1.1rem;
     color: var(--secondary-color);
     text-align: left;
   }
   
   .editable-cell {
     text-align: right;
+    flex-grow: 1;
+    min-width: 50px;
   }
 }
 

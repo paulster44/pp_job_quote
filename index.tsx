@@ -72,10 +72,11 @@ const App: React.FC = () => {
   
   const [quote, setQuote] = useState<Quote | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [showStyleSelector, setShowStyleSelector] = useState(false);
 
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>('dark');
   const [bumpPercent, setBumpPercent] = useState('10');
 
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -88,7 +89,7 @@ const App: React.FC = () => {
       if (storedProjects) {
         setSavedProjects(JSON.parse(storedProjects));
       }
-      const savedTheme = localStorage.getItem('theme') as Theme || 'light';
+      const savedTheme = localStorage.getItem('theme') as Theme || 'dark';
       setTheme(savedTheme);
       document.body.className = `${savedTheme}-theme`;
     } catch (e) {
@@ -210,7 +211,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
       setError('Please provide a project name, upload a photo, and describe the scope of work to generate a render.');
       return;
     }
-
+    
+    setShowStyleSelector(true);
     setIsRenderLoading(true);
     setError(null);
     setGeneratedImage(null);
@@ -290,6 +292,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setGeneratedImage(null);
         setCurrentProjectId(null);
         setError(null);
+        setShowStyleSelector(false);
         return;
     }
     
@@ -307,6 +310,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setCurrentProjectId(projectToLoad.id);
         setError(null);
         setActiveTab('quote');
+        setShowStyleSelector(!!projectToLoad.generatedImage);
     }
   };
   
@@ -372,6 +376,12 @@ Respond ONLY with a JSON object matching the provided schema.`;
     if (!quote) return;
     const newItem: LineItem = { item: 'New Item', quantity: 1, unit: 'each', rate: 0, total: 0 };
     const updatedItems = [...quote.lineItems, newItem];
+    setQuote(recalculateQuote(updatedItems));
+  };
+
+  const handleRemoveItem = (indexToRemove: number) => {
+    if (!quote) return;
+    const updatedItems = quote.lineItems.filter((_, index) => index !== indexToRemove);
     setQuote(recalculateQuote(updatedItems));
   };
 
@@ -503,7 +513,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
           <textarea id="scope" placeholder="e.g., Replace laminate with LVP, paint walls/ceiling, add 4 pot lights..." value={scope} onChange={e => setScope(e.target.value)}></textarea>
         </div>
 
-        {generatedImage && (
+        {showStyleSelector && (
           <div className="form-group">
               <Tooltip text="Choose an aesthetic for the 'after' render. You can regenerate with different styles. <br><b>AI Pro Tip:</b> The style guides the AI on everything from color palettes to fixture choices.">
                 <label>Design Style (for "After" Render)</label>
@@ -579,6 +589,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                           <th>Unit</th>
                           <th>Rate</th>
                           <th>Total</th>
+                          <th className="remove-col"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -589,6 +600,11 @@ Respond ONLY with a JSON object matching the provided schema.`;
                             <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
                             <td data-label="Rate"><input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" /></td>
                             <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
+                            <td className="remove-col" data-label="">
+                                <button onClick={() => handleRemoveItem(index)} className="remove-item-btn" title="Remove Item">
+                                    <span className="material-icons-outlined">close</span>
+                                </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
