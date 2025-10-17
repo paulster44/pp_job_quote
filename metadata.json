@@ -1,5 +1,7 @@
 {
   "name": "pp_job_quote",
   "description": "An empty app",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

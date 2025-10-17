@@ -44,8 +44,17 @@ interface SavedProject {
 }
 
 type Tab = 'quote' | 'render';
-type StylePreset = 'Modern' | 'Farmhouse' | 'Scandinavian' | 'Industrial';
+type StylePreset = 'Modern' | 'Farmhouse' | 'Scandinavian' | 'Industrial' | 'Coastal' | 'Minimalist' | 'Bohemian' | 'Mid-Century Modern';
 type Theme = 'light' | 'dark';
+
+const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
+  return (
+    <div className="tooltip-container">
+      {children}
+      <span className="tooltip-text" dangerouslySetInnerHTML={{ __html: text }}></span>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [projectName, setProjectName] = useState('');
@@ -56,7 +65,8 @@ const App: React.FC = () => {
   const [scope, setScope] = useState('');
   const [style, setStyle] = useState<StylePreset>('Modern');
   
-  const [loading, setLoading] = useState(false);
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+  const [isRenderLoading, setIsRenderLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('quote');
   
@@ -66,6 +76,7 @@ const App: React.FC = () => {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('light');
+  const [bumpPercent, setBumpPercent] = useState('10');
 
   const sliderRef = useRef<HTMLInputElement>(null);
   const afterImageRef = useRef<HTMLImageElement>(null);
@@ -115,23 +126,21 @@ const App: React.FC = () => {
     };
   };
 
-  const generateQuoteAndRenders = async () => {
+  const generateQuote = async () => {
     if (!file || !scope || !projectName) {
-      setError('Please provide a project name, upload a photo, and describe the scope of work.');
+      setError('Please provide a project name, upload a photo, and describe the scope of work to generate a quote.');
       return;
     }
 
-    setLoading(true);
+    setIsQuoteLoading(true);
     setError(null);
     setQuote(null);
-    setGeneratedImage(null);
     setActiveTab('quote');
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
       const imagePart = await fileToGenerativePart(file);
 
-      // --- Quote Generation ---
       const quotePrompt = `You are an expert renovation contractor. Before providing rates, perform a deep analysis of current, typical labor costs for licensed and insured tradespeople in the ${region} metropolitan area. The rates must be realistic and competitive for this specific locale.
 Analyze the attached image of a ${roomType} and the following scope of work to create a detailed line-item quote. The scope is: "${scope}".
 
@@ -175,7 +184,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         required: ["lineItems", "summary"],
       };
 
-      const quotePromise = ai.models.generateContent({
+      const quoteResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: { parts: [imagePart, { text: quotePrompt }] },
         config: {
@@ -184,10 +193,36 @@ Respond ONLY with a JSON object matching the provided schema.`;
         },
       });
 
-      // --- Render Generation ---
+      const quoteJson = JSON.parse(quoteResponse.text);
+      setQuote(quoteJson);
+
+    } catch (err) {
+      console.error(err);
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(`Failed to generate quote. ${errorMessage}`);
+    } finally {
+      setIsQuoteLoading(false);
+    }
+  };
+
+  const generateRender = async () => {
+    if (!file || !scope || !projectName) {
+      setError('Please provide a project name, upload a photo, and describe the scope of work to generate a render.');
+      return;
+    }
+
+    setIsRenderLoading(true);
+    setError(null);
+    setGeneratedImage(null);
+    setActiveTab('render');
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      const imagePart = await fileToGenerativePart(file);
+
       const renderPrompt = `Given the attached 'before' image of a ${roomType}, generate a photorealistic 'after' image of the completed renovation. The desired new style is ${style}. The scope of work is: "${scope}". The final image should be a high-quality, photorealistic 'after' shot, showing the finished room from the same perspective as the original photo.`;
 
-      const renderPromise = ai.models.generateContent({
+      const renderResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: [imagePart, { text: renderPrompt }] },
         config: {
@@ -195,11 +230,6 @@ Respond ONLY with a JSON object matching the provided schema.`;
         },
       });
 
-      const [quoteResponse, renderResponse] = await Promise.all([quotePromise, renderPromise]);
-
-      const quoteJson = JSON.parse(quoteResponse.text);
-      setQuote(quoteJson);
-      
       const firstPart = renderResponse?.candidates?.[0]?.content?.parts[0];
       if (firstPart && 'inlineData' in firstPart) {
           const base64Image = firstPart.inlineData.data;
@@ -211,15 +241,15 @@ Respond ONLY with a JSON object matching the provided schema.`;
     } catch (err) {
       console.error(err);
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-      setError(`Failed to generate results. ${errorMessage}`);
+      setError(`Failed to generate render. ${errorMessage}`);
     } finally {
-      setLoading(false);
+      setIsRenderLoading(false);
     }
   };
 
   const saveProject = () => {
-    if (!projectName || !quote || !filePreview || !file) {
-        alert("Please generate a quote and provide a project name before saving.");
+    if (!projectName || (!quote && !generatedImage) || !filePreview || !file) {
+        alert("Please generate a quote or render and provide a project name before saving.");
         return;
     }
 
@@ -249,7 +279,6 @@ Respond ONLY with a JSON object matching the provided schema.`;
   const handleLoadProject = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const projectId = e.target.value;
     if (!projectId) {
-        // Reset form if "-- Select --" is chosen
         setProjectName('');
         setFile(null);
         setFilePreview(null);
@@ -267,7 +296,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
     const projectToLoad = savedProjects.find(p => p.id === projectId);
     if (projectToLoad) {
         setProjectName(projectToLoad.name);
-        setFile(null); // Cannot restore file object, user must re-upload to re-generate
+        setFile(null);
         setFilePreview(projectToLoad.filePreview);
         setRoomType(projectToLoad.roomType);
         setRegion(projectToLoad.region);
@@ -290,6 +319,112 @@ Respond ONLY with a JSON object matching the provided schema.`;
         sliderHandleRef.current.style.left = `${value}%`;
     }
   };
+  
+  const recalculateQuote = (lineItems: LineItem[]): Quote => {
+      const subtotal = lineItems.reduce((acc, item) => acc + item.total, 0);
+      const overhead = subtotal * 0.10;
+      const contingency = subtotal * 0.05;
+      const tax = (subtotal + overhead + contingency) * 0.13;
+      const grandTotal = subtotal + overhead + contingency + tax;
+
+      return {
+          lineItems,
+          summary: {
+              subtotal,
+              overhead,
+              contingency,
+              tax,
+              grandTotal,
+              disclaimer: quote?.summary.disclaimer || "This is a labor-only quote and does not include major materials."
+          }
+      };
+  };
+
+  const handleItemChange = (index: number, field: keyof LineItem, value: string | number) => {
+    if (!quote) return;
+    const updatedItems = [...quote.lineItems];
+    const itemToUpdate = { ...updatedItems[index] };
+
+    // Fix: Type 'number' is not assignable to type 'never'. This was caused by faulty logic that
+    // confused TypeScript's type inference. The logic is refactored to check the field type
+    // before assigning the value, ensuring type safety.
+    if (field === 'item' || field === 'unit') {
+        if (typeof value === 'string') {
+            itemToUpdate[field] = value;
+        }
+    } else {
+        const numValue = typeof value === 'number' ? value : parseFloat(value);
+        if (!isNaN(numValue)) {
+            itemToUpdate[field] = numValue;
+        }
+    }
+
+    if (field === 'quantity' || field === 'rate') {
+      itemToUpdate.total = itemToUpdate.quantity * itemToUpdate.rate;
+    } else if (field === 'total') {
+      if (itemToUpdate.quantity !== 0) {
+        itemToUpdate.rate = itemToUpdate.total / itemToUpdate.quantity;
+      }
+    }
+
+    updatedItems[index] = itemToUpdate;
+    setQuote(recalculateQuote(updatedItems));
+  };
+
+  const addManualItem = () => {
+    if (!quote) return;
+    const newItem: LineItem = { item: 'New Item', quantity: 1, unit: 'each', rate: 0, total: 0 };
+    const updatedItems = [...quote.lineItems, newItem];
+    setQuote(recalculateQuote(updatedItems));
+  };
+
+  const handleBump = (direction: 'up' | 'down') => {
+      if (!quote) return;
+      const percentage = parseFloat(bumpPercent);
+      if (isNaN(percentage)) return;
+
+      const multiplier = direction === 'up' ? 1 + (percentage / 100) : 1 - (percentage / 100);
+
+      const bumpedItems = quote.lineItems.map(item => {
+          const newRate = item.rate * multiplier;
+          return {
+              ...item,
+              rate: newRate,
+              total: item.quantity * newRate,
+          };
+      });
+
+      setQuote(recalculateQuote(bumpedItems));
+  };
+
+  const exportCSV = () => {
+    if (!quote) return;
+    const headers = ['Item', 'Quantity', 'Unit', 'Rate', 'Total'];
+    const rows = quote.lineItems.map(item => 
+      [item.item, item.quantity.toFixed(2), item.unit, item.rate.toFixed(2), item.total.toFixed(2)].join(',')
+    );
+    let csvContent = "data:text/csv;charset=utf-8," + headers.join(',') + "\n" + rows.join('\n');
+    
+    // Add summary
+    csvContent += "\n\n";
+    csvContent += `Subtotal,${quote.summary.subtotal.toFixed(2)}\n`;
+    csvContent += `Overhead (10%),${quote.summary.overhead.toFixed(2)}\n`;
+    csvContent += `Contingency (5%),${quote.summary.contingency.toFixed(2)}\n`;
+    csvContent += `Tax (13%),${quote.summary.tax.toFixed(2)}\n`;
+    csvContent += `Grand Total,${quote.summary.grandTotal.toFixed(2)}\n`;
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${projectName}_quote.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const printPDF = () => {
+    window.print();
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -311,28 +446,34 @@ Respond ONLY with a JSON object matching the provided schema.`;
         </header>
 
         <div className="form-group">
+          <Tooltip text="Load a previously saved project. Your projects are stored securely in your browser's local storage.">
             <label htmlFor="saved-projects">Load Project</label>
-            <select id="saved-projects" onChange={handleLoadProject} value={currentProjectId || ''}>
-                <option value="">-- Start a New Project --</option>
-                {savedProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+          </Tooltip>
+          <select id="saved-projects" onChange={handleLoadProject} value={currentProjectId || ''}>
+              <option value="">-- Start a New Project --</option>
+              {savedProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
         </div>
 
         <div className="form-group">
-          <label htmlFor="project-name">1. Project Name</label>
+          <Tooltip text="Give your project a descriptive name. This will be used for saving and on the final quote and PDF export.">
+            <label htmlFor="project-name">Project Name</label>
+          </Tooltip>
           <input type="text" id="project-name" className="input" placeholder="e.g., Main Floor Bathroom Reno" value={projectName} onChange={e => setProjectName(e.target.value)} />
         </div>
 
         <div className="form-group">
-          <label htmlFor="photo-upload">2. Upload Room Photo</label>
+          <Tooltip text="Upload a clear, well-lit photo of the room. <br><b>AI Pro Tip:</b> For the most accurate analysis and best renders, use a high-resolution image taken from a corner to show as much space as possible.">
+            <label htmlFor="photo-upload">Upload Room Photo</label>
+          </Tooltip>
           <div className="file-upload-area" onClick={() => document.getElementById('photo-upload')?.click()}>
-            <input type="file" id="photo-upload" accept="image/png, image/jpeg" onChange={handleFileChange} hidden />
+            <input type="file" id="photo-upload" accept="image/png, image/jpeg" onChange={handleFileChange} hidden capture="environment"/>
             {filePreview ? (
               <img src={filePreview} alt="Room preview" className="image-preview" />
             ) : (
               <>
                 <span className="material-icons-outlined">upload_file</span>
-                <p>Click to upload or drag & drop</p>
+                <p>Click to upload or take a photo</p>
               </>
             )}
           </div>
@@ -340,7 +481,9 @@ Respond ONLY with a JSON object matching the provided schema.`;
         </div>
         
         <div className="form-group">
-            <label>3. Room & Location</label>
+            <Tooltip text="Select the room type and metropolitan area. <br><b>AI Pro Tip:</b> This is crucial! The AI researches real, current labor rates for your selected region to ensure the quote is realistic.">
+                <label>Room & Location</label>
+            </Tooltip>
             <div style={{display: 'flex', gap: '1rem'}}>
                 <select value={roomType} onChange={e => setRoomType(e.target.value)}>
                     <option>Kitchen</option>
@@ -357,27 +500,40 @@ Respond ONLY with a JSON object matching the provided schema.`;
         </div>
 
         <div className="form-group">
-          <label htmlFor="scope">4. Scope of Work</label>
+          <Tooltip text="Describe the renovation in detail. <br><b>AI Pro Tip:</b> Be specific with measurements. Instead of 'new floor', say 'install 250 sq ft of luxury vinyl plank'. The more detail, the more accurate your quote.">
+            <label htmlFor="scope">Scope of Work</label>
+          </Tooltip>
           <textarea id="scope" placeholder="e.g., Replace laminate with LVP, paint walls/ceiling, add 4 pot lights..." value={scope} onChange={e => setScope(e.target.value)}></textarea>
         </div>
 
-        <div className="form-group">
-            <label>5. Design Style (for "After" Render)</label>
-            <div className="radio-group">
-                {(['Modern', 'Farmhouse', 'Scandinavian', 'Industrial'] as StylePreset[]).map(s => (
-                    <div key={s}>
-                        <input type="radio" id={`style-${s}`} name="style" value={s} checked={style === s} onChange={() => setStyle(s)} />
-                        <label htmlFor={`style-${s}`}>{s}</label>
-                    </div>
-                ))}
+        {generatedImage && (
+          <div className="form-group">
+              <Tooltip text="Choose an aesthetic for the 'after' render. You can regenerate with different styles. <br><b>AI Pro Tip:</b> The style guides the AI on everything from color palettes to fixture choices.">
+                <label>Design Style (for "After" Render)</label>
+              </Tooltip>
+              <div className="radio-group">
+                  {(['Modern', 'Farmhouse', 'Scandinavian', 'Industrial', 'Coastal', 'Minimalist', 'Bohemian', 'Mid-Century Modern'] as StylePreset[]).map(s => (
+                      <div key={s}>
+                          <input type="radio" id={`style-${s}`} name="style" value={s} checked={style === s} onChange={() => setStyle(s)} />
+                          <label htmlFor={`style-${s}`}>{s}</label>
+                      </div>
+                  ))}
+              </div>
+          </div>
+        )}
+
+        <div className="form-actions">
+            <div className="button-group">
+                <button className="btn" onClick={generateQuote} disabled={isQuoteLoading || isRenderLoading || !file || !scope || !projectName}>
+                    {isQuoteLoading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">request_quote</span>}
+                    {isQuoteLoading ? 'Analyzing...' : 'Generate Quote'}
+                </button>
+                <button className="btn" onClick={generateRender} disabled={isQuoteLoading || isRenderLoading || !file || !scope || !projectName}>
+                    {isRenderLoading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">auto_fix_high</span>}
+                    {isRenderLoading ? 'Designing...' : 'Generate Render'}
+                </button>
             </div>
-        </div>
-        <div className="button-group">
-            <button className="btn" onClick={generateQuoteAndRenders} disabled={loading || !file || !scope || !projectName}>
-            {loading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">auto_awesome</span>}
-            {loading ? 'Generating...' : 'Generate Quote & Renders'}
-            </button>
-            <button className="btn btn-secondary" onClick={saveProject} disabled={loading || !quote || !projectName}>
+            <button className="btn btn-secondary" onClick={saveProject} disabled={isQuoteLoading || isRenderLoading || (!quote && !generatedImage) || !projectName}>
                 <span className="material-icons-outlined">save</span>
                 Save Project
             </button>
@@ -385,94 +541,123 @@ Respond ONLY with a JSON object matching the provided schema.`;
       </aside>
 
       <section className="panel output-panel">
-        {!quote && !loading && !error && (
-            <div className="placeholder">
-                <span className="material-icons-outlined">dynamic_feed</span>
-                <h2>Your Quote & Renders Appear Here</h2>
-                <p>Fill out the form to get started.</p>
-            </div>
-        )}
-        {loading && (
-            <div className="placeholder">
-                <div className="loading-spinner" style={{width: 48, height: 48, borderColor: 'var(--primary-color)', borderTopColor: 'transparent'}}></div>
-                <h2>Analyzing & Designing...</h2>
-                <p>This may take a moment. The AI is hard at work!</p>
-            </div>
-        )}
-        {error && (
-            <div className="error-message">
-                <span className="material-icons-outlined">error_outline</span>
-                <h2>Oops! Something went wrong.</h2>
-                <p>{error}</p>
-            </div>
-        )}
-        {quote && (
-          <>
-            <div className="tabs">
-              <button className={`tab-btn ${activeTab === 'quote' ? 'active' : ''}`} onClick={() => setActiveTab('quote')}>Quote</button>
-              <button className={`tab-btn ${activeTab === 'render' ? 'active' : ''}`} onClick={() => setActiveTab('render')}>Renders</button>
-            </div>
-            
-            {activeTab === 'quote' && (
-              <div className="tab-content">
-                <h2>Estimate for: {projectName}</h2>
-                <table className="quote-table">
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Quantity</th>
-                      <th>Unit</th>
-                      <th>Rate</th>
-                      <th>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {quote.lineItems.map((item, index) => (
-                      <tr key={index}>
-                        <td>{item.item}</td>
-                        <td>{item.quantity.toFixed(2)}</td>
-                        <td>{item.unit}</td>
-                        <td>{formatCurrency(item.rate)}</td>
-                        <td>{formatCurrency(item.total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="quote-summary">
-                    <p className="disclaimer">{quote.summary.disclaimer}</p>
-                    <table className="summary-table">
-                        <tbody>
-                            <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
-                            <tr><td>Overhead (10%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td></tr>
-                            <tr><td>Contingency (5%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td></tr>
-                            <tr><td>Tax (13%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td></tr>
-                            <tr className="total"><td>Grand Total</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.grandTotal)}</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+        <div className="printable-area">
+          {!quote && !generatedImage && !isQuoteLoading && !isRenderLoading && !error && (
+              <div className="placeholder">
+                  <span className="material-icons-outlined">dynamic_feed</span>
+                  <h2>Your Quote & Renders Appear Here</h2>
+                  <p>Fill out the form and click a "Generate" button to get started.</p>
               </div>
-            )}
-            {activeTab === 'render' && (
-              <div className="tab-content render-view">
-                <h2>Before & After: {projectName}</h2>
-                 {filePreview && generatedImage ? (
-                  <div className="before-after-slider">
-                    <img src={generatedImage} id="after-image" ref={afterImageRef} alt="After render"/>
-                    <img src={filePreview} id="before-image" alt="Before photo"/>
-                    <input type="range" id="slider-range" min="0" max="100" defaultValue="50" ref={sliderRef} onChange={handleSliderChange} aria-label="Before/After image slider"/>
-                    <div className="slider-handle" ref={sliderHandleRef}>
-                        <div className="slider-handle-icon">
-                            <span className="material-icons-outlined" style={{transform: 'rotate(90deg)'}}>unfold_more</span>
+          )}
+          {(isQuoteLoading || isRenderLoading) && (
+              <div className="placeholder">
+                  <div className="loading-spinner" style={{width: 48, height: 48, borderColor: 'var(--primary-color)', borderTopColor: 'transparent'}}></div>
+                  <h2>{isQuoteLoading ? 'Analyzing Quote...' : 'Designing Render...'}</h2>
+                  <p>This may take a moment. The AI is hard at work!</p>
+              </div>
+          )}
+          {error && (
+              <div className="error-message">
+                  <span className="material-icons-outlined">error_outline</span>
+                  <h2>Oops! Something went wrong.</h2>
+                  <p>{error}</p>
+              </div>
+          )}
+          {(quote || generatedImage) && (
+            <>
+              <div className="tabs no-print">
+                <button className={`tab-btn ${activeTab === 'quote' ? 'active' : ''}`} onClick={() => setActiveTab('quote')} disabled={!quote}>Quote</button>
+                <button className={`tab-btn ${activeTab === 'render' ? 'active' : ''}`} onClick={() => setActiveTab('render')} disabled={!generatedImage}>Renders</button>
+              </div>
+              
+              <div style={{display: activeTab === 'quote' ? 'block' : 'none'}}>
+                {quote && (
+                  <div className="tab-content">
+                    <h2>Estimate for: {projectName}</h2>
+                    <table className="quote-table">
+                      <thead>
+                        <tr>
+                          <th style={{width: '40%'}}>Item</th>
+                          <th>Quantity</th>
+                          <th>Unit</th>
+                          <th>Rate</th>
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quote.lineItems.map((item, index) => (
+                          <tr key={index}>
+                            <td><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
+                            <td><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
+                            <td><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
+                            <td><input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" /></td>
+                            <td><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="quote-actions no-print">
+                        <button onClick={addManualItem} className="btn btn-secondary">
+                          <span className="material-icons-outlined">add</span>
+                          Add Line Item
+                        </button>
+                    </div>
+
+                    <div className="quote-summary">
+                        <div className="quote-actions-bottom no-print">
+                            <div className="bump-section">
+                                <label htmlFor="bump-percent">Adjust Price By</label>
+                                <div className="input-group">
+                                    <input id="bump-percent" type="number" value={bumpPercent} onChange={e => setBumpPercent(e.target.value)} />
+                                    <span>%</span>
+                                    <button onClick={() => handleBump('up')}>Up</button>
+                                    <button onClick={() => handleBump('down')}>Down</button>
+                                </div>
+                            </div>
+                            <div className="export-section">
+                                <button onClick={exportCSV}><span className="material-icons-outlined">download</span> Export as CSV</button>
+                                <button onClick={printPDF}><span className="material-icons-outlined">print</span> Print / Save as PDF</button>
+                            </div>
                         </div>
+
+                        <p className="disclaimer">{quote.summary.disclaimer}</p>
+                        <table className="summary-table">
+                            <tbody>
+                                <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
+                                <tr><td>Overhead (10%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td></tr>
+                                <tr><td>Contingency (5%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td></tr>
+                                <tr><td>Tax (13%)</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td></tr>
+                                <tr className="total"><td>Grand Total</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.grandTotal)}</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                   </div>
-                 ) : (
-                    <p>Render is not available.</p>
-                 )}
+                )}
               </div>
-            )}
-          </>
-        )}
+              <div style={{display: activeTab === 'render' ? 'block' : 'none'}}>
+                {generatedImage && (
+                  <div className="tab-content render-view">
+                    <h2>Before & After: {projectName}</h2>
+                    {filePreview && generatedImage ? (
+                      <div className="before-after-slider">
+                        <img src={generatedImage} id="after-image" ref={afterImageRef} alt="After render"/>
+                        <img src={filePreview} id="before-image" alt="Before photo"/>
+                        <input type="range" id="slider-range" min="0" max="100" defaultValue="50" ref={sliderRef} onChange={handleSliderChange} aria-label="Before/After image slider"/>
+                        <div className="slider-handle" ref={sliderHandleRef}>
+                            <div className="slider-handle-icon">
+                                <span className="material-icons-outlined" style={{transform: 'rotate(90deg)'}}>unfold_more</span>
+                            </div>
+                        </div>
+                      </div>
+                    ) : (
+                        <p>Render is not available.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </section>
     </main>
   );
