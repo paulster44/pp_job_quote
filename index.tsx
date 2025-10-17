@@ -86,7 +86,7 @@ const App: React.FC = () => {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
-  const [bumpPercent, setBumpPercent] = useState('10');
+  const [rateAdjustPercent, setRateAdjustPercent] = useState(5);
 
   const [overheadPercent, setOverheadPercent] = useState(10);
   const [contingencyPercent, setContingencyPercent] = useState(5);
@@ -400,6 +400,26 @@ Respond ONLY with a JSON object matching the provided schema.`;
     setQuote(recalculateQuote(updatedItems));
   };
 
+  const handleRateAdjust = (index: number, direction: 'up' | 'down') => {
+    if (!quote) return;
+    
+    const percentage = Number(rateAdjustPercent);
+    if (isNaN(percentage)) return;
+
+    const multiplier = direction === 'up' ? 1 + (percentage / 100) : 1 - (percentage / 100);
+    
+    const updatedItems = [...quote.lineItems];
+    const itemToUpdate = { ...updatedItems[index] };
+
+    const newRate = itemToUpdate.rate * multiplier;
+    itemToUpdate.rate = newRate;
+    itemToUpdate.total = itemToUpdate.quantity * newRate;
+
+    updatedItems[index] = itemToUpdate;
+    setQuote(recalculateQuote(updatedItems));
+  };
+
+
   const addManualItem = () => {
     if (!quote) return;
     const newItem: LineItem = { item: 'New Item', quantity: 1, unit: 'each', rate: 0, total: 0 };
@@ -411,25 +431,6 @@ Respond ONLY with a JSON object matching the provided schema.`;
     if (!quote) return;
     const updatedItems = quote.lineItems.filter((_, index) => index !== indexToRemove);
     setQuote(recalculateQuote(updatedItems));
-  };
-
-  const handleBump = (direction: 'up' | 'down') => {
-      if (!quote) return;
-      const percentage = parseFloat(bumpPercent);
-      if (isNaN(percentage)) return;
-
-      const multiplier = direction === 'up' ? 1 + (percentage / 100) : 1 - (percentage / 100);
-
-      const bumpedItems = quote.lineItems.map(item => {
-          const newRate = item.rate * multiplier;
-          return {
-              ...item,
-              rate: newRate,
-              total: item.quantity * newRate,
-          };
-      });
-
-      setQuote(recalculateQuote(bumpedItems));
   };
 
   const exportCSV = () => {
@@ -621,7 +622,16 @@ Respond ONLY with a JSON object matching the provided schema.`;
                           <th style={{width: '40%'}}>Item</th>
                           <th>Quantity</th>
                           <th>Unit</th>
-                          <th>Rate</th>
+                          <th>
+                            <div className="rate-adjust-header no-print">
+                              <span>Adjust By</span>
+                              <div className="input-group">
+                                  <input type="number" className="rate-adjust-input" value={rateAdjustPercent} onChange={e => setRateAdjustPercent(parseFloat(e.target.value) || 0)} />
+                                  <span>%</span>
+                              </div>
+                            </div>
+                            <span className="print-only">Rate</span>
+                          </th>
                           <th>Total</th>
                           <th className="remove-col"></th>
                         </tr>
@@ -632,7 +642,15 @@ Respond ONLY with a JSON object matching the provided schema.`;
                             <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
                             <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
                             <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
-                            <td data-label="Rate"><input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" /></td>
+                            <td data-label="Rate">
+                                <div className="rate-adjust-cell">
+                                    <input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" />
+                                    <div className="rate-adjust-buttons no-print">
+                                        <button onClick={() => handleRateAdjust(index, 'up')} title={`Increase by ${rateAdjustPercent}%`}>▲</button>
+                                        <button onClick={() => handleRateAdjust(index, 'down')} title={`Decrease by ${rateAdjustPercent}%`}>▼</button>
+                                    </div>
+                                </div>
+                            </td>
                             <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
                             <td className="remove-col" data-label="">
                                 <button onClick={() => handleRemoveItem(index)} className="remove-item-btn" title="Remove Item">
@@ -652,15 +670,6 @@ Respond ONLY with a JSON object matching the provided schema.`;
 
                     <div className="quote-summary">
                         <div className="quote-actions-bottom no-print">
-                            <div className="bump-section">
-                                <label htmlFor="bump-percent">Adjust Price By</label>
-                                <div className="input-group">
-                                    <input id="bump-percent" type="number" value={bumpPercent} onChange={e => setBumpPercent(e.target.value)} />
-                                    <span>%</span>
-                                    <button onClick={() => handleBump('up')}>Up</button>
-                                    <button onClick={() => handleBump('down')}>Down</button>
-                                </div>
-                            </div>
                             <div className="export-section">
                                 <button onClick={exportCSV}><span className="material-icons-outlined">download</span> Export as CSV</button>
                                 <button onClick={printPDF}><span className="material-icons-outlined">print</span> Print / Save as PDF</button>
@@ -675,7 +684,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                                     <td>
                                         <div className="summary-label-group" data-percentage={overheadPercent}>
                                             <span>Overhead</span>
-                                            <div className="input-group summary-input">
+                                            <div className="input-group summary-input no-print">
                                                 <input type="number" value={overheadPercent} onChange={e => setOverheadPercent(parseFloat(e.target.value) || 0)} />
                                                 <span>%</span>
                                             </div>
@@ -687,7 +696,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                                     <td>
                                         <div className="summary-label-group" data-percentage={contingencyPercent}>
                                             <span>Contingency</span>
-                                            <div className="input-group summary-input">
+                                            <div className="input-group summary-input no-print">
                                                 <input type="number" value={contingencyPercent} onChange={e => setContingencyPercent(parseFloat(e.target.value) || 0)} />
                                                 <span>%</span>
                                             </div>
@@ -699,7 +708,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                                     <td>
                                       <div className="summary-label-group" data-percentage={currentTaxRate}>
                                           <span>Tax</span>
-                                          <span className="tax-rate-display">({currentTaxRate}%)</span>
+                                          <span className="tax-rate-display no-print">({currentTaxRate}%)</span>
                                       </div>
                                     </td>
                                     <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td>
