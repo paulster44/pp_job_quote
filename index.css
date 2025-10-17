@@ -695,6 +695,12 @@ body.dark-theme .loading-spinner {
   opacity: 1;
 }
 
+.tooltip-container:active .tooltip-text {
+  visibility: hidden;
+  opacity: 0;
+  transition: none;
+}
+
 
 @keyframes spin {
   to { transform: rotate(360deg); }
@@ -715,6 +721,67 @@ body.dark-theme .loading-spinner {
   .quote-actions-bottom {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .quote-table thead {
+    display: none;
+  }
+
+  .quote-table tbody, .quote-table tr, .quote-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .quote-table tr {
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .quote-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    text-align: right;
+    border-bottom: 1px dashed var(--border-color);
+  }
+
+  .quote-table tr td:last-child {
+    border-bottom: none;
+  }
+
+  .quote-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: left;
+    padding-right: 1rem;
+    color: var(--light-text-color);
+  }
+
+  .quote-table td:nth-child(1) {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-color);
+  }
+
+  .quote-table td:nth-child(1)::before {
+    display: none;
+  }
+  
+  .quote-table td:nth-child(1) .editable-cell {
+    font-weight: bold;
+    font-size: 1.05rem;
+    color: var(--secondary-color);
+    text-align: left;
+  }
+  
+  .editable-cell {
+    text-align: right;
   }
 }
 

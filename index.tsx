@@ -61,7 +61,7 @@ const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [roomType, setRoomType] = useState('Kitchen');
-  const [region, setRegion] = useState('ON_TORONTO');
+  const [region, setRegion] = useState('QC_MONTREAL');
   const [scope, setScope] = useState('');
   const [style, setStyle] = useState<StylePreset>('Modern');
   
@@ -283,7 +283,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setFile(null);
         setFilePreview(null);
         setRoomType('Kitchen');
-        setRegion('ON_TORONTO');
+        setRegion('QC_MONTREAL');
         setScope('');
         setStyle('Modern');
         setQuote(null);
@@ -345,9 +345,6 @@ Respond ONLY with a JSON object matching the provided schema.`;
     const updatedItems = [...quote.lineItems];
     const itemToUpdate = { ...updatedItems[index] };
 
-    // Fix: Type 'number' is not assignable to type 'never'. This was caused by faulty logic that
-    // confused TypeScript's type inference. The logic is refactored to check the field type
-    // before assigning the value, ensuring type safety.
     if (field === 'item' || field === 'unit') {
         if (typeof value === 'string') {
             itemToUpdate[field] = value;
@@ -587,11 +584,11 @@ Respond ONLY with a JSON object matching the provided schema.`;
                       <tbody>
                         {quote.lineItems.map((item, index) => (
                           <tr key={index}>
-                            <td><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
-                            <td><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
-                            <td><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
-                            <td><input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" /></td>
-                            <td><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
+                            <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
+                            <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
+                            <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
+                            <td data-label="Rate"><input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" /></td>
+                            <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
                           </tr>
                         ))}
                       </tbody>
