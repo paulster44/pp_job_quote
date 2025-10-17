@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
@@ -21,6 +21,7 @@ interface QuoteSummary {
   contingency: number;
   tax: number;
   grandTotal: number;
+  disclaimer: string;
 }
 
 interface Quote {
@@ -28,10 +29,26 @@ interface Quote {
   summary: QuoteSummary;
 }
 
+interface SavedProject {
+  id: string;
+  name: string;
+  filePreview: string;
+  fileName: string;
+  fileType: string;
+  roomType: string;
+  region: string;
+  scope: string;
+  style: StylePreset;
+  quote: Quote | null;
+  generatedImage: string | null;
+}
+
 type Tab = 'quote' | 'render';
 type StylePreset = 'Modern' | 'Farmhouse' | 'Scandinavian' | 'Industrial';
+type Theme = 'light' | 'dark';
 
 const App: React.FC = () => {
+  const [projectName, setProjectName] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [roomType, setRoomType] = useState('Kitchen');
@@ -46,15 +63,44 @@ const App: React.FC = () => {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
 
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>('light');
+
   const sliderRef = useRef<HTMLInputElement>(null);
   const afterImageRef = useRef<HTMLImageElement>(null);
   const sliderHandleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const storedProjects = localStorage.getItem('renovationProjects');
+      if (storedProjects) {
+        setSavedProjects(JSON.parse(storedProjects));
+      }
+      const savedTheme = localStorage.getItem('theme') as Theme || 'light';
+      setTheme(savedTheme);
+      document.body.className = `${savedTheme}-theme`;
+    } catch (e) {
+      console.error("Failed to load data from localStorage", e);
+    }
+  }, []);
+  
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    document.body.className = `${newTheme}-theme`;
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      setFilePreview(URL.createObjectURL(selectedFile));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result as string);
+      };
+      reader.readAsDataURL(selectedFile);
     }
   };
 
@@ -70,8 +116,8 @@ const App: React.FC = () => {
   };
 
   const generateQuoteAndRenders = async () => {
-    if (!file || !scope) {
-      setError('Please upload a photo and describe the scope of work.');
+    if (!file || !scope || !projectName) {
+      setError('Please provide a project name, upload a photo, and describe the scope of work.');
       return;
     }
 
@@ -86,7 +132,14 @@ const App: React.FC = () => {
       const imagePart = await fileToGenerativePart(file);
 
       // --- Quote Generation ---
-      const quotePrompt = `You are an expert renovation contractor. Analyze the attached image of a ${roomType} and the following scope of work to create a detailed line-item quote for labor and installation costs. The project is located in ${region}. Use typical industry rates for that region. The scope is: "${scope}". Provide quantities (sq ft, linear ft, count), unit rates, and totals. Calculate a summary with a 10% overhead, 5% contingency, and 13% tax. Respond ONLY with a JSON object matching the provided schema.`;
+      const quotePrompt = `You are an expert renovation contractor. Before providing rates, perform a deep analysis of current, typical labor costs for licensed and insured tradespeople in the ${region} metropolitan area. The rates must be realistic and competitive for this specific locale.
+Analyze the attached image of a ${roomType} and the following scope of work to create a detailed line-item quote. The scope is: "${scope}".
+
+The quote must be for LABOR AND INSTALLATION ONLY. It should cover standard consumables (e.g., screws, caulk) but explicitly exclude the cost of major materials (e.g., flooring, paint, tiles, fixtures).
+
+Provide quantities (sq ft, linear ft, count), unit rates, and totals. Calculate a summary with a 10% overhead, 5% contingency, and 13% tax. The summary must include a disclaimer about this being a labor-only quote.
+
+Respond ONLY with a JSON object matching the provided schema.`;
 
       const quoteSchema = {
         type: Type.OBJECT,
@@ -100,7 +153,7 @@ const App: React.FC = () => {
                 item: { type: Type.STRING, description: "Description of the task." },
                 quantity: { type: Type.NUMBER, description: "Quantity of work." },
                 unit: { type: Type.STRING, description: "Unit of measurement (e.g., sqft, lf, each)." },
-                rate: { type: Type.NUMBER, description: "Cost per unit." },
+                rate: { type: Type.NUMBER, description: "Cost per unit for labor." },
                 total: { type: Type.NUMBER, description: "Line item total cost." },
               },
               required: ["item", "quantity", "unit", "rate", "total"],
@@ -114,8 +167,9 @@ const App: React.FC = () => {
               contingency: { type: Type.NUMBER },
               tax: { type: Type.NUMBER },
               grandTotal: { type: Type.NUMBER },
+              disclaimer: { type: Type.STRING, description: "A disclaimer stating this is a labor-only quote and does not include major materials." }
             },
-            required: ["subtotal", "overhead", "contingency", "tax", "grandTotal"],
+            required: ["subtotal", "overhead", "contingency", "tax", "grandTotal", "disclaimer"],
           },
         },
         required: ["lineItems", "summary"],
@@ -143,11 +197,9 @@ const App: React.FC = () => {
 
       const [quoteResponse, renderResponse] = await Promise.all([quotePromise, renderPromise]);
 
-      // Process quote
       const quoteJson = JSON.parse(quoteResponse.text);
       setQuote(quoteJson);
       
-      // Process render
       const firstPart = renderResponse?.candidates?.[0]?.content?.parts[0];
       if (firstPart && 'inlineData' in firstPart) {
           const base64Image = firstPart.inlineData.data;
@@ -162,6 +214,70 @@ const App: React.FC = () => {
       setError(`Failed to generate results. ${errorMessage}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveProject = () => {
+    if (!projectName || !quote || !filePreview || !file) {
+        alert("Please generate a quote and provide a project name before saving.");
+        return;
+    }
+
+    const newProject: SavedProject = {
+      id: currentProjectId || Date.now().toString(),
+      name: projectName,
+      filePreview: filePreview,
+      fileName: file.name,
+      fileType: file.type,
+      roomType,
+      region,
+      scope,
+      style,
+      quote,
+      generatedImage,
+    };
+
+    const otherProjects = savedProjects.filter(p => p.id !== newProject.id);
+    const updatedProjects = [...otherProjects, newProject].sort((a, b) => a.name.localeCompare(b.name));
+    
+    setSavedProjects(updatedProjects);
+    setCurrentProjectId(newProject.id);
+    localStorage.setItem('renovationProjects', JSON.stringify(updatedProjects));
+    alert('Project saved successfully!');
+  };
+
+  const handleLoadProject = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const projectId = e.target.value;
+    if (!projectId) {
+        // Reset form if "-- Select --" is chosen
+        setProjectName('');
+        setFile(null);
+        setFilePreview(null);
+        setRoomType('Kitchen');
+        setRegion('ON_TORONTO');
+        setScope('');
+        setStyle('Modern');
+        setQuote(null);
+        setGeneratedImage(null);
+        setCurrentProjectId(null);
+        setError(null);
+        return;
+    }
+    
+    const projectToLoad = savedProjects.find(p => p.id === projectId);
+    if (projectToLoad) {
+        setProjectName(projectToLoad.name);
+        setFile(null); // Cannot restore file object, user must re-upload to re-generate
+        setFilePreview(projectToLoad.filePreview);
+        setRoomType(projectToLoad.roomType);
+        setRegion(projectToLoad.region);
+        setScope(projectToLoad.scope);
+        setStyle(projectToLoad.style);
+        setQuote(projectToLoad.quote);
+        setGeneratedImage(projectToLoad.generatedImage);
+        setCurrentProjectId(projectToLoad.id);
+        setError(null);
+        setActiveTab('quote');
     }
   };
   
@@ -182,13 +298,33 @@ const App: React.FC = () => {
   return (
     <main className="container">
       <aside className="panel input-panel">
-        <h1>
-          <span className="material-icons-outlined">construction</span>
-          AI Renovation Quoter
-        </h1>
+        <header className="panel-header">
+            <h1>
+                <span className="material-icons-outlined">construction</span>
+                AI Renovation Quoter
+            </h1>
+            <button onClick={toggleTheme} className="theme-toggle-btn" aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
+                <span className="material-icons-outlined">
+                    {theme === 'light' ? 'dark_mode' : 'light_mode'}
+                </span>
+            </button>
+        </header>
 
         <div className="form-group">
-          <label htmlFor="photo-upload">1. Upload Room Photo</label>
+            <label htmlFor="saved-projects">Load Project</label>
+            <select id="saved-projects" onChange={handleLoadProject} value={currentProjectId || ''}>
+                <option value="">-- Start a New Project --</option>
+                {savedProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="project-name">1. Project Name</label>
+          <input type="text" id="project-name" className="input" placeholder="e.g., Main Floor Bathroom Reno" value={projectName} onChange={e => setProjectName(e.target.value)} />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="photo-upload">2. Upload Room Photo</label>
           <div className="file-upload-area" onClick={() => document.getElementById('photo-upload')?.click()}>
             <input type="file" id="photo-upload" accept="image/png, image/jpeg" onChange={handleFileChange} hidden />
             {filePreview ? (
@@ -200,10 +336,11 @@ const App: React.FC = () => {
               </>
             )}
           </div>
+          {currentProjectId && !file && <small className="field-note">Re-upload photo to generate new results.</small>}
         </div>
         
         <div className="form-group">
-            <label>2. Room & Location</label>
+            <label>3. Room & Location</label>
             <div style={{display: 'flex', gap: '1rem'}}>
                 <select value={roomType} onChange={e => setRoomType(e.target.value)}>
                     <option>Kitchen</option>
@@ -220,12 +357,12 @@ const App: React.FC = () => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="scope">3. Scope of Work</label>
+          <label htmlFor="scope">4. Scope of Work</label>
           <textarea id="scope" placeholder="e.g., Replace laminate with LVP, paint walls/ceiling, add 4 pot lights..." value={scope} onChange={e => setScope(e.target.value)}></textarea>
         </div>
 
         <div className="form-group">
-            <label>4. Design Style (for "After" Render)</label>
+            <label>5. Design Style (for "After" Render)</label>
             <div className="radio-group">
                 {(['Modern', 'Farmhouse', 'Scandinavian', 'Industrial'] as StylePreset[]).map(s => (
                     <div key={s}>
@@ -235,12 +372,16 @@ const App: React.FC = () => {
                 ))}
             </div>
         </div>
-
-        <button className="btn" onClick={generateQuoteAndRenders} disabled={loading || !file || !scope}>
-          {loading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">auto_awesome</span>}
-          {loading ? 'Generating...' : 'Generate Quote & Renders'}
-        </button>
-
+        <div className="button-group">
+            <button className="btn" onClick={generateQuoteAndRenders} disabled={loading || !file || !scope || !projectName}>
+            {loading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">auto_awesome</span>}
+            {loading ? 'Generating...' : 'Generate Quote & Renders'}
+            </button>
+            <button className="btn btn-secondary" onClick={saveProject} disabled={loading || !quote || !projectName}>
+                <span className="material-icons-outlined">save</span>
+                Save Project
+            </button>
+        </div>
       </aside>
 
       <section className="panel output-panel">
@@ -274,7 +415,7 @@ const App: React.FC = () => {
             
             {activeTab === 'quote' && (
               <div className="tab-content">
-                <h2>Line-Item Estimate</h2>
+                <h2>Estimate for: {projectName}</h2>
                 <table className="quote-table">
                   <thead>
                     <tr>
@@ -298,6 +439,7 @@ const App: React.FC = () => {
                   </tbody>
                 </table>
                 <div className="quote-summary">
+                    <p className="disclaimer">{quote.summary.disclaimer}</p>
                     <table className="summary-table">
                         <tbody>
                             <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
@@ -312,7 +454,7 @@ const App: React.FC = () => {
             )}
             {activeTab === 'render' && (
               <div className="tab-content render-view">
-                <h2>Before & After Design</h2>
+                <h2>Before & After: {projectName}</h2>
                  {filePreview && generatedImage ? (
                   <div className="before-after-slider">
                     <img src={generatedImage} id="after-image" ref={afterImageRef} alt="After render"/>
