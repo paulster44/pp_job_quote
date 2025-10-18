@@ -882,6 +882,11 @@ body.dark-theme .loading-spinner {
 }
 
 @media print {
+  @page {
+    size: auto;
+    margin: 0.75in;
+  }
+
   body {
     background-color: #fff;
     color: #000;
