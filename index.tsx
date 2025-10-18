@@ -50,10 +50,13 @@ interface SavedProject {
   quote: Quote | null;
   overheadPercent: number;
   contingencyPercent: number;
+  inputMode: 'photo' | 'text';
+  jobDescription: string;
 }
 
 type Theme = 'light' | 'dark';
 type Region = 'QC_MONTREAL' | 'ON_TORONTO' | 'NYC';
+type InputMode = 'photo' | 'text';
 
 const TAX_RATES: { [key in Region]: number } = {
   QC_MONTREAL: 14.975,
@@ -74,8 +77,6 @@ const LoginScreen: React.FC<{ onLoginSuccess: () => void }> = ({ onLoginSuccess 
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
-    // In a real application, this would be a secure call to a backend.
-    // This is a simple client-side check for demonstration purposes.
     const DEMO_PASSWORD = 'password123'; 
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -149,6 +150,9 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [targetTotal, setTargetTotal] = useState<string>('');
   
+  const [inputMode, setInputMode] = useState<InputMode>('photo');
+  const [jobDescription, setJobDescription] = useState('');
+
   const currentTaxRate = TAX_RATES[region];
 
   useEffect(() => {
@@ -204,9 +208,10 @@ const App: React.FC = () => {
   };
 
   const generateQuote = async () => {
-    if (!file || !scope || !projectName) {
-      setError('Please provide a project name, upload a photo, and describe the scope of work to generate a quote.');
-      return;
+    const isPhotoMode = inputMode === 'photo';
+    if (!projectName || (isPhotoMode && (!file || !scope)) || (!isPhotoMode && !jobDescription)) {
+        setError('Please provide a project name and fill in the required fields for your chosen input method.');
+        return;
     }
 
     setIsQuoteLoading(true);
@@ -215,16 +220,28 @@ const App: React.FC = () => {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      const imagePart = await fileToGenerativePart(file);
+      const contentsParts: any[] = [];
+      
+      let quotePrompt = `You are an expert renovation contractor. Before providing rates, perform a deep analysis of current, typical labor costs for licensed and insured tradespeople in the ${region} metropolitan area. The rates must be realistic and competitive for this specific locale.`;
 
-      const quotePrompt = `You are an expert renovation contractor. Before providing rates, perform a deep analysis of current, typical labor costs for licensed and insured tradespeople in the ${region} metropolitan area. The rates must be realistic and competitive for this specific locale.
-Analyze the attached image of a ${roomType} and the following scope of work to create a detailed line-item quote. The scope is: "${scope}".
+      if (isPhotoMode) {
+        quotePrompt += `\nAnalyze the attached image of a ${roomType} and the following scope of work to create a detailed line-item quote. The scope is: "${scope}".`;
+        contentsParts.push(await fileToGenerativePart(file!));
+      } else { // Text mode
+        quotePrompt += `\nUse the following detailed description as the primary source of truth to create a detailed line-item quote for a ${roomType}. The description is: "${jobDescription}".`;
+        if (file) {
+          quotePrompt += `\nIf an image is attached, use it for additional visual context only, but the text description is the definitive guide.`;
+          contentsParts.push(await fileToGenerativePart(file));
+        }
+      }
 
-The quote must be for LABOR AND INSTALLATION ONLY. It should cover standard consumables (e.g., screws, caulk) but explicitly exclude the cost of major materials (e.g., flooring, paint, tiles, fixtures).
+      quotePrompt += `\nThe quote must be for LABOR AND INSTALLATION ONLY. It should cover standard consumables (e.g., screws, caulk) but explicitly exclude the cost of major materials (e.g., flooring, paint, tiles, fixtures).
 
 Provide quantities (sq ft, linear ft, count), unit rates, and totals. Calculate a summary with a ${overheadPercent}% overhead, ${contingencyPercent}% contingency, and the correct local tax for the ${region} area. The summary must include a disclaimer about this being a labor-only quote.
 
 Respond ONLY with a JSON object matching the provided schema.`;
+
+      contentsParts.push({ text: quotePrompt });
 
       const quoteSchema = {
         type: Type.OBJECT,
@@ -262,7 +279,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
 
       const quoteResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, { text: quotePrompt }] },
+        contents: { parts: contentsParts },
         config: {
           responseMimeType: "application/json",
           responseSchema: quoteSchema,
@@ -270,7 +287,6 @@ Respond ONLY with a JSON object matching the provided schema.`;
       });
 
       const quoteJson = JSON.parse(quoteResponse.text);
-      // Immediately recalculate with the frontend's source-of-truth tax rate
       setQuote(recalculateQuote(quoteJson.lineItems, quoteJson.summary.disclaimer));
 
     } catch (err) {
@@ -300,6 +316,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
       quote,
       overheadPercent,
       contingencyPercent,
+      inputMode,
+      jobDescription,
     };
 
     const otherProjects = savedProjects.filter(p => p.id !== newProject.id);
@@ -320,6 +338,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setRoomType('Kitchen');
         setRegion('QC_MONTREAL');
         setScope('');
+        setJobDescription('');
+        setInputMode('photo');
         setQuote(null);
         setCurrentProjectId(null);
         setError(null);
@@ -336,6 +356,8 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setRoomType(projectToLoad.roomType);
         setRegion(projectToLoad.region as Region);
         setScope(projectToLoad.scope);
+        setJobDescription(projectToLoad.jobDescription || '');
+        setInputMode(projectToLoad.inputMode || 'photo');
         setQuote(projectToLoad.quote);
         setCurrentProjectId(projectToLoad.id);
         setError(null);
@@ -561,6 +583,10 @@ Respond ONLY with a JSON object matching the provided schema.`;
     sessionStorage.setItem('isAppAuthenticated', 'true');
     setIsAuthenticated(true);
   };
+  
+  const isGenerateDisabled = isQuoteLoading || !projectName ||
+    (inputMode === 'photo' && (!file || !scope)) ||
+    (inputMode === 'text' && !jobDescription);
 
   if (!isAuthenticated) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
@@ -597,10 +623,26 @@ Respond ONLY with a JSON object matching the provided schema.`;
           </Tooltip>
           <input type="text" id="project-name" className="input" placeholder="e.g., Main Floor Bathroom Reno" value={projectName} onChange={e => setProjectName(e.target.value)} />
         </div>
-
+        
         <div className="form-group">
-          <Tooltip text="Upload a clear, well-lit photo of the room. <br><b>AI Pro Tip:</b> For the most accurate analysis and best renders, use a high-resolution image taken from a corner to show as much as possible.">
-            <label htmlFor="photo-upload">Upload Room Photo</label>
+            <label>Input Method</label>
+            <div className="input-mode-toggle">
+                <button className={`toggle-btn ${inputMode === 'photo' ? 'active' : ''}`} onClick={() => setInputMode('photo')}>
+                    <span className="material-icons-outlined">photo_camera</span> Photo + Scope
+                </button>
+                <button className={`toggle-btn ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>
+                    <span className="material-icons-outlined">description</span> Detailed Description
+                </button>
+            </div>
+        </div>
+        
+        <div className="form-group">
+          <Tooltip text={inputMode === 'photo' 
+            ? "Upload a clear, well-lit photo of the room. This is required for this input mode. <br><b>AI Pro Tip:</b> Use a high-resolution image taken from a corner to show as much as possible." 
+            : "Optionally, upload a photo for visual context. The AI will prioritize your detailed text description."}>
+            <label htmlFor="photo-upload">
+              {inputMode === 'photo' ? 'Upload Room Photo (Required)' : 'Upload Room Photo (Optional)'}
+            </label>
           </Tooltip>
           <div className="file-upload-area" onClick={() => document.getElementById('photo-upload')?.click()}>
             <input type="file" id="photo-upload" accept="image/png, image/jpeg" onChange={handleFileChange} hidden capture="environment"/>
@@ -615,7 +657,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
           </div>
           {currentProjectId && !file && <small className="field-note">Re-upload photo to generate new results.</small>}
         </div>
-        
+
         <div className="form-group">
             <Tooltip text="Select the room type and metropolitan area. <br><b>AI Pro Tip:</b> This is crucial! The AI researches real, current labor rates and sets the correct local sales tax for your selected region.">
                 <label>Room & Location</label>
@@ -635,15 +677,24 @@ Respond ONLY with a JSON object matching the provided schema.`;
             </div>
         </div>
 
-        <div className="form-group">
-          <Tooltip text="Describe the renovation in detail. <br><b>AI Pro Tip:</b> Be specific with measurements. Instead of 'new floor', say 'install 250 sq ft of luxury vinyl plank'. The more detail, the more accurate your quote.">
-            <label htmlFor="scope">Scope of Work</label>
-          </Tooltip>
-          <textarea id="scope" placeholder="e.g., Replace laminate with LVP, paint walls/ceiling, add 4 pot lights..." value={scope} onChange={e => setScope(e.target.value)}></textarea>
-        </div>
+        {inputMode === 'photo' ? (
+          <div className="form-group">
+            <Tooltip text="Describe the renovation in detail. <br><b>AI Pro Tip:</b> Be specific with measurements. Instead of 'new floor', say 'install 250 sq ft of luxury vinyl plank'. The more detail, the more accurate your quote.">
+              <label htmlFor="scope">Scope of Work</label>
+            </Tooltip>
+            <textarea id="scope" placeholder="e.g., Replace laminate with LVP, paint walls/ceiling, add 4 pot lights..." value={scope} onChange={e => setScope(e.target.value)}></textarea>
+          </div>
+        ) : (
+          <div className="form-group">
+            <Tooltip text="Provide a comprehensive description of the job. This will be the primary source for the AI's analysis. The more detail, the better.">
+              <label htmlFor="job-description">Detailed Description</label>
+            </Tooltip>
+            <textarea id="job-description" className="detailed-description" placeholder="e.g., Demolish existing 10x12 kitchen. Install 120 sq ft of new LVP flooring. Assemble and install 10 new IKEA cabinets (5 upper, 5 lower). Install new laminate countertop. Hook up existing sink, faucet, and dishwasher..." value={jobDescription} onChange={e => setJobDescription(e.target.value)}></textarea>
+          </div>
+        )}
 
         <div className="form-actions">
-            <button className="btn" onClick={generateQuote} disabled={isQuoteLoading || !file || !scope || !projectName}>
+            <button className="btn" onClick={generateQuote} disabled={isGenerateDisabled}>
                 {isQuoteLoading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">request_quote</span>}
                 {isQuoteLoading ? 'Analyzing...' : 'Generate Quote'}
             </button>

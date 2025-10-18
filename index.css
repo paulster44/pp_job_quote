@@ -162,8 +162,44 @@ body.dark-theme textarea:focus {
 }
 
 textarea {
-  min-height: 120px;
+  min-height: 100px;
   resize: vertical;
+}
+
+textarea.detailed-description {
+  min-height: 150px;
+}
+
+.input-mode-toggle {
+    display: flex;
+    background-color: var(--bg-color);
+    border-radius: 8px;
+    padding: 0.25rem;
+    border: 1px solid var(--border-color);
+}
+.input-mode-toggle .toggle-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    background-color: transparent;
+    color: var(--light-text-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.input-mode-toggle .toggle-btn.active {
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.input-mode-toggle .toggle-btn .material-icons-outlined {
+    font-size: 1.125rem;
 }
 
 .file-upload-area {
@@ -197,7 +233,7 @@ body.dark-theme .file-upload-area:hover {
 .image-preview {
   width: 100%;
   height: auto;
-  max-height: 200px;
+  max-height: 160px;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--border-color);
