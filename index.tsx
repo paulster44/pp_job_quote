@@ -144,7 +144,7 @@ const App: React.FC = () => {
   const [rateAdjustPercent, setRateAdjustPercent] = useState(5);
   const [contractorRates, setContractorRates] = useState<ContractorRates>({});
 
-  const [overheadPercent, setOverheadPercent] = useState(10);
+  const [overheadPercent, setOverheadPercent] = useState(7.5);
   const [contingencyPercent, setContingencyPercent] = useState(5);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [targetTotal, setTargetTotal] = useState<string>('');
@@ -323,7 +323,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setQuote(null);
         setCurrentProjectId(null);
         setError(null);
-        setOverheadPercent(10);
+        setOverheadPercent(7.5);
         setContingencyPercent(5);
         return;
     }
@@ -339,7 +339,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setQuote(projectToLoad.quote);
         setCurrentProjectId(projectToLoad.id);
         setError(null);
-        setOverheadPercent(projectToLoad.overheadPercent ?? 10);
+        setOverheadPercent(projectToLoad.overheadPercent ?? 7.5);
         setContingencyPercent(projectToLoad.contingencyPercent ?? 5);
     }
   };
@@ -777,6 +777,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                           <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
                           <tr>
                               <td>
+                                <Tooltip text="Overhead covers the indirect costs of running the business, such as insurance, office rent, and administrative salaries. It's calculated as a percentage of the subtotal.">
                                   <div className="summary-label-group" data-percentage={overheadPercent}>
                                       <span>Overhead</span>
                                       <div className="input-group summary-input no-print">
@@ -784,11 +785,13 @@ Respond ONLY with a JSON object matching the provided schema.`;
                                           <span>%</span>
                                       </div>
                                   </div>
+                                </Tooltip>
                               </td>
                               <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td>
                           </tr>
                           <tr>
                               <td>
+                                <Tooltip text="A contingency fund is a percentage set aside for unforeseen problems or changes during the project, like discovering hidden water damage. It helps manage risks without derailing the budget.">
                                   <div className="summary-label-group" data-percentage={contingencyPercent}>
                                       <span>Contingency</span>
                                       <div className="input-group summary-input no-print">
@@ -796,6 +799,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
                                           <span>%</span>
                                       </div>
                                   </div>
+                                </Tooltip>
                               </td>
                               <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td>
                           </tr>
