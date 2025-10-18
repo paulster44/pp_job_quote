@@ -259,7 +259,7 @@ body.dark-theme .btn:disabled {
 
 .btn.btn-secondary {
     background-color: var(--surface-color);
-    color: var(--primary-color);
+    color: var(--text-color);
     border: 1px solid var(--primary-color);
 }
 
@@ -331,6 +331,11 @@ body.dark-theme .btn.btn-secondary:disabled {
 
 .quote-table td {
   font-size: 0.95rem;
+  color: var(--text-color);
+}
+
+body.dark-theme .quote-table td {
+    color: var(--text-color);
 }
 
 .editable-cell {
@@ -385,13 +390,15 @@ body.dark-theme .btn.btn-secondary:disabled {
 
 .rate-adjust-header {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
   font-size: 0.75rem;
   font-weight: 500;
   text-align: right;
   padding-bottom: 0.25rem;
 }
+
 .rate-adjust-header .input-group {
     justify-content: flex-end;
 }
@@ -403,13 +410,40 @@ body.dark-theme .btn.btn-secondary:disabled {
     background-color: var(--bg-color);
     color: var(--text-color);
     font-weight: normal;
+    border-radius: 4px;
 }
 .rate-adjust-header .rate-adjust-input:focus {
     outline: none;
+    background-color: var(--surface-color);
 }
 .rate-adjust-header span {
     padding-right: 0.25rem;
     color: var(--light-text-color);
+}
+
+.global-adjust-buttons {
+    display: flex;
+    gap: 0.25rem;
+}
+.global-adjust-buttons button {
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    color: var(--text-color);
+    padding: 0.1rem 0.3rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    border-radius: 4px;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+.global-adjust-buttons button:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+body.dark-theme .global-adjust-buttons button:hover {
+    color: var(--surface-color);
 }
 
 
@@ -564,6 +598,19 @@ body.dark-theme .rate-book-btn:hover {
 .tax-rate-display {
     font-size: 0.875rem;
     color: var(--light-text-color);
+}
+
+.summary-table tr.bottom-line-adjust td {
+    padding-top: 1rem;
+    border-top: 1px dashed var(--border-color);
+}
+
+.summary-total-input {
+    text-align: right;
+    font-weight: bold;
+    font-size: 1.1rem !important;
+    color: var(--primary-color) !important;
+    width: 150px !important;
 }
 
 .summary-table tr.total td {

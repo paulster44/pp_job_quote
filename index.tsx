@@ -147,6 +147,7 @@ const App: React.FC = () => {
   const [overheadPercent, setOverheadPercent] = useState(10);
   const [contingencyPercent, setContingencyPercent] = useState(5);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [targetTotal, setTargetTotal] = useState<string>('');
   
   const currentTaxRate = TAX_RATES[region];
 
@@ -367,6 +368,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
   useEffect(() => {
     if (quote) {
       setQuote(recalculateQuote(quote.lineItems));
+      setTargetTotal('');
     }
   }, [overheadPercent, contingencyPercent, region]);
 
@@ -415,6 +417,54 @@ Respond ONLY with a JSON object matching the provided schema.`;
 
     updatedItems[index] = itemToUpdate;
     setQuote(recalculateQuote(updatedItems));
+  };
+
+  const handleGlobalRateAdjust = (direction: 'up' | 'down') => {
+    if (!quote) return;
+    const percentage = Number(rateAdjustPercent);
+    if (isNaN(percentage)) return;
+
+    const multiplier = direction === 'up' ? 1 + (percentage / 100) : 1 - (percentage / 100);
+    
+    const updatedItems = quote.lineItems.map(item => {
+        const newRate = item.rate * multiplier;
+        return {
+            ...item,
+            rate: newRate,
+            total: item.quantity * newRate,
+        };
+    });
+    setQuote(recalculateQuote(updatedItems));
+  };
+
+  const handleBottomLineAdjust = (e: React.FocusEvent | React.KeyboardEvent) => {
+    const newTotal = parseFloat(targetTotal);
+    if (!quote || isNaN(newTotal) || newTotal <= 0) {
+        setTargetTotal('');
+        return;
+    }
+    
+    const { subtotal } = quote.summary;
+    if (subtotal === 0) {
+        alert("Cannot adjust total when subtotal is zero.");
+        setTargetTotal('');
+        return;
+    }
+
+    const preTaxMultiplier = 1 + (overheadPercent / 100) + (contingencyPercent / 100);
+    const taxMultiplier = 1 + (currentTaxRate / 100);
+
+    const targetSubtotal = (newTotal / taxMultiplier) / preTaxMultiplier;
+    const adjustmentRatio = targetSubtotal / subtotal;
+    
+    const updatedItems = quote.lineItems.map(item => ({
+        ...item,
+        rate: item.rate * adjustmentRatio,
+        total: item.total * adjustmentRatio,
+    }));
+
+    setQuote(recalculateQuote(updatedItems));
+    setTargetTotal('');
   };
 
 
@@ -549,7 +599,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
         </div>
 
         <div className="form-group">
-          <Tooltip text="Upload a clear, well-lit photo of the room. <br><b>AI Pro Tip:</b> For the most accurate analysis and best renders, use a high-resolution image taken from a corner to show as much space as possible.">
+          <Tooltip text="Upload a clear, well-lit photo of the room. <br><b>AI Pro Tip:</b> For the most accurate analysis and best renders, use a high-resolution image taken from a corner to show as much as possible.">
             <label htmlFor="photo-upload">Upload Room Photo</label>
           </Tooltip>
           <div className="file-upload-area" onClick={() => document.getElementById('photo-upload')?.click()}>
@@ -644,10 +694,14 @@ Respond ONLY with a JSON object matching the provided schema.`;
                     <th>Unit</th>
                     <th>
                       <div className="rate-adjust-header no-print">
-                        <span>Adjust By</span>
+                        <span>Adjust All By</span>
                         <div className="input-group">
                             <input type="number" className="rate-adjust-input" value={rateAdjustPercent} onChange={e => setRateAdjustPercent(parseFloat(e.target.value) || 0)} />
                             <span>%</span>
+                        </div>
+                        <div className="global-adjust-buttons">
+                            <button onClick={() => handleGlobalRateAdjust('up')} title={`Increase all by ${rateAdjustPercent}%`}>▲</button>
+                            <button onClick={() => handleGlobalRateAdjust('down')} title={`Decrease all by ${rateAdjustPercent}%`}>▼</button>
                         </div>
                       </div>
                       <span className="print-only">Rate</span>
@@ -754,6 +808,24 @@ Respond ONLY with a JSON object matching the provided schema.`;
                               </td>
                               <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td>
                           </tr>
+                           <tr className="bottom-line-adjust no-print">
+                                <td>
+                                    <div className="summary-label-group">
+                                        <span>Adjust Grand Total</span>
+                                    </div>
+                                </td>
+                                <td style={{textAlign: 'right'}}>
+                                    <input 
+                                        type="number" 
+                                        className="editable-cell summary-total-input" 
+                                        placeholder="Set new total"
+                                        value={targetTotal}
+                                        onChange={(e) => setTargetTotal(e.target.value)}
+                                        onBlur={handleBottomLineAdjust}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleBottomLineAdjust(e)}
+                                    />
+                                </td>
+                            </tr>
                           <tr className="total"><td>Grand Total</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.grandTotal)}</td></tr>
                       </tbody>
                   </table>
