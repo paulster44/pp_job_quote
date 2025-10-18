@@ -263,6 +263,10 @@ body.dark-theme .btn:disabled {
     border: 1px solid var(--primary-color);
 }
 
+body.dark-theme .btn.btn-secondary {
+    color: var(--primary-color);
+}
+
 .btn.btn-secondary:hover {
     background-color: rgba(79, 70, 229, 0.05);
 }
@@ -334,7 +338,7 @@ body.dark-theme .btn.btn-secondary:disabled {
   border: none;
   font-family: inherit;
   font-size: inherit;
-  color: inherit;
+  color: var(--text-color);
   width: 100%;
   padding: 0.3rem;
   border-radius: 4px;
