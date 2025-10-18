@@ -70,6 +70,61 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
   );
 };
 
+const LoginScreen: React.FC<{ onLoginSuccess: () => void }> = ({ onLoginSuccess }) => {
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    // In a real application, this would be a secure call to a backend.
+    // This is a simple client-side check for demonstration purposes.
+    const DEMO_PASSWORD = 'password123'; 
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (password === DEMO_PASSWORD) {
+            setError('');
+            onLoginSuccess();
+        } else {
+            setError('Incorrect password. Please try again.');
+        }
+    };
+
+    return (
+        <div className="auth-overlay">
+            <div className="auth-container panel">
+                <header className="panel-header" style={{marginBottom: '1rem'}}>
+                    <h1>
+                        <span className="material-icons-outlined">lock</span>
+                        Secure Access
+                    </h1>
+                </header>
+                <p>This application is for authorized users only. Please enter the password to continue.</p>
+                <form onSubmit={handleSubmit} className="auth-form">
+                    <div className="form-group">
+                        <label htmlFor="password">Password</label>
+                        <input
+                            type="password"
+                            id="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="input"
+                            autoFocus
+                        />
+                    </div>
+                    {error && <p className="auth-error">{error}</p>}
+                    <button type="submit" className="btn">
+                        <span className="material-icons-outlined">login</span>
+                        Sign In
+                    </button>
+                </form>
+                 <footer style={{fontSize: '0.8rem', textAlign: 'center', color: 'var(--light-text-color)', marginTop: '1rem'}}>
+                    <p>Hint: The password is 'password123'</p>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
+
 const App: React.FC = () => {
   const [projectName, setProjectName] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -91,6 +146,7 @@ const App: React.FC = () => {
 
   const [overheadPercent, setOverheadPercent] = useState(10);
   const [contingencyPercent, setContingencyPercent] = useState(5);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   const currentTaxRate = TAX_RATES[region];
 
@@ -107,6 +163,10 @@ const App: React.FC = () => {
       const savedTheme = localStorage.getItem('theme') as Theme || 'dark';
       setTheme(savedTheme);
       document.body.className = `${savedTheme}-theme`;
+      
+      if (sessionStorage.getItem('isAppAuthenticated') === 'true') {
+        setIsAuthenticated(true);
+      }
     } catch (e) {
       console.error("Failed to load data from localStorage", e);
     }
@@ -384,6 +444,14 @@ Respond ONLY with a JSON object matching the provided schema.`;
     alert(`Rate for "${itemToSave.item}" saved!`);
   };
 
+  const removeContractorRate = (itemToRemove: LineItem) => {
+    const key = itemToRemove.item.trim().toLowerCase();
+    const { [key]: _, ...remainingRates } = contractorRates;
+    setContractorRates(remainingRates);
+    localStorage.setItem('contractorRates', JSON.stringify(remainingRates));
+    alert(`Rate for "${itemToRemove.item}" removed.`);
+  };
+
   const applyContractorRates = () => {
     if (!quote || Object.keys(contractorRates).length === 0) return;
     
@@ -438,6 +506,15 @@ Respond ONLY with a JSON object matching the provided schema.`;
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
+
+  const handleLoginSuccess = () => {
+    sessionStorage.setItem('isAppAuthenticated', 'true');
+    setIsAuthenticated(true);
+  };
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
   
   return (
     <main className="container">
@@ -581,35 +658,44 @@ Respond ONLY with a JSON object matching the provided schema.`;
                   </tr>
                 </thead>
                 <tbody>
-                  {quote.lineItems.map((item, index) => (
-                    <tr key={index}>
-                      <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
-                      <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
-                      <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
-                      <td data-label="Rate">
-                          <div className="rate-adjust-cell">
-                              <input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" />
-                              <div className="rate-adjust-buttons no-print">
-                                  <button onClick={() => handleRateAdjust(index, 'up')} title={`Increase by ${rateAdjustPercent}%`}>▲</button>
-                                  <button onClick={() => handleRateAdjust(index, 'down')} title={`Decrease by ${rateAdjustPercent}%`}>▼</button>
-                              </div>
-                          </div>
-                      </td>
-                      <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
-                      <td className="action-col" data-label="">
-                        <Tooltip text="Save this item and rate to your personal rate book for future use.">
-                            <button onClick={() => saveContractorRate(item)} className="save-rate-btn" title="Save Rate">
-                                <span className="material-icons-outlined">bookmark_add</span>
+                  {quote.lineItems.map((item, index) => {
+                    const itemKey = item.item.trim().toLowerCase();
+                    const isRateSaved = contractorRates.hasOwnProperty(itemKey);
+                    return (
+                      <tr key={index}>
+                        <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
+                        <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
+                        <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
+                        <td data-label="Rate">
+                            <div className="rate-adjust-cell">
+                                <input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" />
+                                <div className="rate-adjust-buttons no-print">
+                                    <button onClick={() => handleRateAdjust(index, 'up')} title={`Increase by ${rateAdjustPercent}%`}>▲</button>
+                                    <button onClick={() => handleRateAdjust(index, 'down')} title={`Decrease by ${rateAdjustPercent}%`}>▼</button>
+                                </div>
+                            </div>
+                        </td>
+                        <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
+                        <td className="action-col" data-label="">
+                          <Tooltip text={isRateSaved ? "Remove rate from your rate book" : "Save this rate to your rate book"}>
+                              <button 
+                                onClick={() => isRateSaved ? removeContractorRate(item) : saveContractorRate(item)} 
+                                className={`rate-book-btn ${isRateSaved ? 'saved' : ''}`}
+                                title={isRateSaved ? "Remove Saved Rate" : "Save Rate"}>
+                                  <span className="material-icons-outlined">
+                                      {isRateSaved ? 'bookmark_remove' : 'bookmark_add'}
+                                  </span>
+                              </button>
+                          </Tooltip>
+                        </td>
+                        <td className="action-col" data-label="">
+                            <button onClick={() => handleRemoveItem(index)} className="remove-item-btn" title="Remove Item">
+                                <span className="material-icons-outlined">close</span>
                             </button>
-                        </Tooltip>
-                      </td>
-                      <td className="action-col" data-label="">
-                          <button onClick={() => handleRemoveItem(index)} className="remove-item-btn" title="Remove Item">
-                              <span className="material-icons-outlined">close</span>
-                          </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <div className="quote-actions no-print">
