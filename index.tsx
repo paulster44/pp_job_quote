@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 interface LineItem {
   item: string;
@@ -29,6 +29,15 @@ interface Quote {
   summary: QuoteSummary;
 }
 
+interface ContractorRate {
+  rate: number;
+  unit: string;
+}
+
+interface ContractorRates {
+  [key: string]: ContractorRate;
+}
+
 interface SavedProject {
   id: string;
   name: string;
@@ -38,15 +47,11 @@ interface SavedProject {
   roomType: string;
   region: string;
   scope: string;
-  style: StylePreset;
   quote: Quote | null;
-  generatedImage: string | null;
   overheadPercent: number;
   contingencyPercent: number;
 }
 
-type Tab = 'quote' | 'render';
-type StylePreset = 'Modern' | 'Farmhouse' | 'Scandinavian' | 'Industrial' | 'Coastal' | 'Minimalist' | 'Bohemian' | 'Mid-Century Modern';
 type Theme = 'light' | 'dark';
 type Region = 'QC_MONTREAL' | 'ON_TORONTO' | 'NYC';
 
@@ -72,36 +77,32 @@ const App: React.FC = () => {
   const [roomType, setRoomType] = useState('Kitchen');
   const [region, setRegion] = useState<Region>('QC_MONTREAL');
   const [scope, setScope] = useState('');
-  const [style, setStyle] = useState<StylePreset>('Modern');
   
   const [isQuoteLoading, setIsQuoteLoading] = useState(false);
-  const [isRenderLoading, setIsRenderLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('quote');
   
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [showStyleSelector, setShowStyleSelector] = useState(false);
 
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
   const [rateAdjustPercent, setRateAdjustPercent] = useState(5);
+  const [contractorRates, setContractorRates] = useState<ContractorRates>({});
 
   const [overheadPercent, setOverheadPercent] = useState(10);
   const [contingencyPercent, setContingencyPercent] = useState(5);
   
   const currentTaxRate = TAX_RATES[region];
 
-  const sliderRef = useRef<HTMLInputElement>(null);
-  const afterImageRef = useRef<HTMLImageElement>(null);
-  const sliderHandleRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     try {
       const storedProjects = localStorage.getItem('renovationProjects');
       if (storedProjects) {
         setSavedProjects(JSON.parse(storedProjects));
+      }
+      const storedRates = localStorage.getItem('contractorRates');
+      if (storedRates) {
+        setContractorRates(JSON.parse(storedRates));
       }
       const savedTheme = localStorage.getItem('theme') as Theme || 'dark';
       setTheme(savedTheme);
@@ -150,7 +151,6 @@ const App: React.FC = () => {
     setIsQuoteLoading(true);
     setError(null);
     setQuote(null);
-    setActiveTab('quote');
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
@@ -221,52 +221,9 @@ Respond ONLY with a JSON object matching the provided schema.`;
     }
   };
 
-  const generateRender = async () => {
-    if (!file || !scope || !projectName) {
-      setError('Please provide a project name, upload a photo, and describe the scope of work to generate a render.');
-      return;
-    }
-    
-    setShowStyleSelector(true);
-    setIsRenderLoading(true);
-    setError(null);
-    setGeneratedImage(null);
-    setActiveTab('render');
-
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      const imagePart = await fileToGenerativePart(file);
-
-      const renderPrompt = `Given the attached 'before' image of a ${roomType}, generate a photorealistic 'after' image of the completed renovation. The desired new style is ${style}. The scope of work is: "${scope}". The final image should be a high-quality, photorealistic 'after' shot, showing the finished room from the same perspective as the original photo.`;
-
-      const renderResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [imagePart, { text: renderPrompt }] },
-        config: {
-          responseModalities: [Modality.IMAGE],
-        },
-      });
-
-      const firstPart = renderResponse?.candidates?.[0]?.content?.parts[0];
-      if (firstPart && 'inlineData' in firstPart) {
-          const base64Image = firstPart.inlineData.data;
-          setGeneratedImage(`data:${firstPart.inlineData.mimeType};base64,${base64Image}`);
-      } else {
-        throw new Error("Image generation failed to return an image.");
-      }
-
-    } catch (err) {
-      console.error(err);
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-      setError(`Failed to generate render. ${errorMessage}`);
-    } finally {
-      setIsRenderLoading(false);
-    }
-  };
-
   const saveProject = () => {
-    if (!projectName || (!quote && !generatedImage) || !filePreview || !file) {
-        alert("Please generate a quote or render and provide a project name before saving.");
+    if (!projectName || !quote || !filePreview || !file) {
+        alert("Please generate a quote and provide a project name before saving.");
         return;
     }
 
@@ -279,9 +236,7 @@ Respond ONLY with a JSON object matching the provided schema.`;
       roomType,
       region,
       scope,
-      style,
       quote,
-      generatedImage,
       overheadPercent,
       contingencyPercent,
     };
@@ -304,12 +259,9 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setRoomType('Kitchen');
         setRegion('QC_MONTREAL');
         setScope('');
-        setStyle('Modern');
         setQuote(null);
-        setGeneratedImage(null);
         setCurrentProjectId(null);
         setError(null);
-        setShowStyleSelector(false);
         setOverheadPercent(10);
         setContingencyPercent(5);
         return;
@@ -323,25 +275,11 @@ Respond ONLY with a JSON object matching the provided schema.`;
         setRoomType(projectToLoad.roomType);
         setRegion(projectToLoad.region as Region);
         setScope(projectToLoad.scope);
-        setStyle(projectToLoad.style);
         setQuote(projectToLoad.quote);
-        setGeneratedImage(projectToLoad.generatedImage);
         setCurrentProjectId(projectToLoad.id);
         setError(null);
-        setActiveTab('quote');
-        setShowStyleSelector(!!projectToLoad.generatedImage);
         setOverheadPercent(projectToLoad.overheadPercent ?? 10);
         setContingencyPercent(projectToLoad.contingencyPercent ?? 5);
-    }
-  };
-  
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (afterImageRef.current) {
-        afterImageRef.current.style.clipPath = `polygon(0 0, ${value}% 0, ${value}% 100%, 0 100%)`;
-    }
-    if (sliderHandleRef.current) {
-        sliderHandleRef.current.style.left = `${value}%`;
     }
   };
   
@@ -431,6 +369,41 @@ Respond ONLY with a JSON object matching the provided schema.`;
     if (!quote) return;
     const updatedItems = quote.lineItems.filter((_, index) => index !== indexToRemove);
     setQuote(recalculateQuote(updatedItems));
+  };
+
+  const saveContractorRate = (itemToSave: LineItem) => {
+    const key = itemToSave.item.trim().toLowerCase();
+    if (!key) {
+      alert("Cannot save a rate for an item with no description.");
+      return;
+    }
+    const newRate: ContractorRate = { rate: itemToSave.rate, unit: itemToSave.unit };
+    const updatedRates = { ...contractorRates, [key]: newRate };
+    setContractorRates(updatedRates);
+    localStorage.setItem('contractorRates', JSON.stringify(updatedRates));
+    alert(`Rate for "${itemToSave.item}" saved!`);
+  };
+
+  const applyContractorRates = () => {
+    if (!quote || Object.keys(contractorRates).length === 0) return;
+    
+    const updatedItems = quote.lineItems.map(item => {
+      const key = item.item.trim().toLowerCase();
+      if (contractorRates[key]) {
+        const saved = contractorRates[key];
+        const newRate = saved.rate;
+        return {
+          ...item,
+          rate: newRate,
+          unit: saved.unit,
+          total: item.quantity * newRate,
+        };
+      }
+      return item;
+    });
+
+    setQuote(recalculateQuote(updatedItems));
+    alert("Saved rates applied.");
   };
 
   const exportCSV = () => {
@@ -542,34 +515,12 @@ Respond ONLY with a JSON object matching the provided schema.`;
           <textarea id="scope" placeholder="e.g., Replace laminate with LVP, paint walls/ceiling, add 4 pot lights..." value={scope} onChange={e => setScope(e.target.value)}></textarea>
         </div>
 
-        {showStyleSelector && (
-          <div className="form-group">
-              <Tooltip text="Choose an aesthetic for the 'after' render. You can regenerate with different styles. <br><b>AI Pro Tip:</b> The style guides the AI on everything from color palettes to fixture choices.">
-                <label>Design Style (for "After" Render)</label>
-              </Tooltip>
-              <div className="radio-group">
-                  {(['Modern', 'Farmhouse', 'Scandinavian', 'Industrial', 'Coastal', 'Minimalist', 'Bohemian', 'Mid-Century Modern'] as StylePreset[]).map(s => (
-                      <div key={s}>
-                          <input type="radio" id={`style-${s}`} name="style" value={s} checked={style === s} onChange={() => setStyle(s)} />
-                          <label htmlFor={`style-${s}`}>{s}</label>
-                      </div>
-                  ))}
-              </div>
-          </div>
-        )}
-
         <div className="form-actions">
-            <div className="button-group">
-                <button className="btn" onClick={generateQuote} disabled={isQuoteLoading || isRenderLoading || !file || !scope || !projectName}>
-                    {isQuoteLoading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">request_quote</span>}
-                    {isQuoteLoading ? 'Analyzing...' : 'Generate Quote'}
-                </button>
-                <button className="btn" onClick={generateRender} disabled={isQuoteLoading || isRenderLoading || !file || !scope || !projectName}>
-                    {isRenderLoading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">auto_fix_high</span>}
-                    {isRenderLoading ? 'Designing...' : 'Generate Render'}
-                </button>
-            </div>
-            <button className="btn btn-secondary" onClick={saveProject} disabled={isQuoteLoading || isRenderLoading || (!quote && !generatedImage) || !projectName}>
+            <button className="btn" onClick={generateQuote} disabled={isQuoteLoading || !file || !scope || !projectName}>
+                {isQuoteLoading ? <div className="loading-spinner"></div> : <span className="material-icons-outlined">request_quote</span>}
+                {isQuoteLoading ? 'Analyzing...' : 'Generate Quote'}
+            </button>
+            <button className="btn btn-secondary" onClick={saveProject} disabled={isQuoteLoading || !quote || !projectName}>
                 <span className="material-icons-outlined">save</span>
                 Save Project
             </button>
@@ -584,17 +535,17 @@ Respond ONLY with a JSON object matching the provided schema.`;
             <p className="printable-date">Date: {new Date().toLocaleDateString()}</p>
           </div>
 
-          {!quote && !generatedImage && !isQuoteLoading && !isRenderLoading && !error && (
+          {!quote && !isQuoteLoading && !error && (
               <div className="placeholder">
                   <span className="material-icons-outlined">dynamic_feed</span>
-                  <h2>Your Quote & Renders Appear Here</h2>
-                  <p>Fill out the form and click a "Generate" button to get started.</p>
+                  <h2>Your Quote Appears Here</h2>
+                  <p>Fill out the form and click "Generate Quote" to get started.</p>
               </div>
           )}
-          {(isQuoteLoading || isRenderLoading) && (
+          {isQuoteLoading && (
               <div className="placeholder">
                   <div className="loading-spinner" style={{width: 48, height: 48, borderColor: 'var(--primary-color)', borderTopColor: 'transparent'}}></div>
-                  <h2>{isQuoteLoading ? 'Analyzing Quote...' : 'Designing Render...'}</h2>
+                  <h2>Analyzing Quote...</h2>
                   <p>This may take a moment. The AI is hard at work!</p>
               </div>
           )}
@@ -605,143 +556,123 @@ Respond ONLY with a JSON object matching the provided schema.`;
                   <p>{error}</p>
               </div>
           )}
-          {(quote || generatedImage) && (
-            <>
-              <div className="tabs no-print">
-                <button className={`tab-btn ${activeTab === 'quote' ? 'active' : ''}`} onClick={() => setActiveTab('quote')} disabled={!quote}>Quote</button>
-                <button className={`tab-btn ${activeTab === 'render' ? 'active' : ''}`} onClick={() => setActiveTab('render')} disabled={!generatedImage}>Renders</button>
-              </div>
-              
-              <div id="printable-quote-content" style={{display: activeTab === 'quote' ? 'block' : 'none'}}>
-                {quote && (
-                  <div className="tab-content">
-                    <h2 className="no-print">Estimate for: {projectName}</h2>
-                    <table className="quote-table">
-                      <thead>
-                        <tr>
-                          <th style={{width: '40%'}}>Item</th>
-                          <th>Quantity</th>
-                          <th>Unit</th>
-                          <th>
-                            <div className="rate-adjust-header no-print">
-                              <span>Adjust By</span>
-                              <div className="input-group">
-                                  <input type="number" className="rate-adjust-input" value={rateAdjustPercent} onChange={e => setRateAdjustPercent(parseFloat(e.target.value) || 0)} />
-                                  <span>%</span>
-                              </div>
-                            </div>
-                            <span className="print-only">Rate</span>
-                          </th>
-                          <th>Total</th>
-                          <th className="remove-col"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {quote.lineItems.map((item, index) => (
-                          <tr key={index}>
-                            <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
-                            <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
-                            <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
-                            <td data-label="Rate">
-                                <div className="rate-adjust-cell">
-                                    <input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" />
-                                    <div className="rate-adjust-buttons no-print">
-                                        <button onClick={() => handleRateAdjust(index, 'up')} title={`Increase by ${rateAdjustPercent}%`}>▲</button>
-                                        <button onClick={() => handleRateAdjust(index, 'down')} title={`Decrease by ${rateAdjustPercent}%`}>▼</button>
-                                    </div>
-                                </div>
-                            </td>
-                            <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
-                            <td className="remove-col" data-label="">
-                                <button onClick={() => handleRemoveItem(index)} className="remove-item-btn" title="Remove Item">
-                                    <span className="material-icons-outlined">close</span>
-                                </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="quote-actions no-print">
-                        <button onClick={addManualItem} className="btn btn-secondary">
-                          <span className="material-icons-outlined">add</span>
-                          Add Line Item
-                        </button>
-                    </div>
-
-                    <div className="quote-summary">
-                        <div className="quote-actions-bottom no-print">
-                            <div className="export-section">
-                                <button onClick={exportCSV}><span className="material-icons-outlined">download</span> Export as CSV</button>
-                                <button onClick={printPDF}><span className="material-icons-outlined">print</span> Print / Save as PDF</button>
-                            </div>
-                        </div>
-
-                        <p className="disclaimer">{quote.summary.disclaimer}</p>
-                        <table className="summary-table">
-                            <tbody>
-                                <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
-                                <tr>
-                                    <td>
-                                        <div className="summary-label-group" data-percentage={overheadPercent}>
-                                            <span>Overhead</span>
-                                            <div className="input-group summary-input no-print">
-                                                <input type="number" value={overheadPercent} onChange={e => setOverheadPercent(parseFloat(e.target.value) || 0)} />
-                                                <span>%</span>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                        <div className="summary-label-group" data-percentage={contingencyPercent}>
-                                            <span>Contingency</span>
-                                            <div className="input-group summary-input no-print">
-                                                <input type="number" value={contingencyPercent} onChange={e => setContingencyPercent(parseFloat(e.target.value) || 0)} />
-                                                <span>%</span>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td>
-                                </tr>
-                                <tr>
-                                    <td>
-                                      <div className="summary-label-group" data-percentage={currentTaxRate}>
-                                          <span>Tax</span>
-                                          <span className="tax-rate-display no-print">({currentTaxRate}%)</span>
-                                      </div>
-                                    </td>
-                                    <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td>
-                                </tr>
-                                <tr className="total"><td>Grand Total</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.grandTotal)}</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div id="printable-render-content" style={{display: activeTab === 'render' ? 'block' : 'none'}}>
-                {generatedImage && (
-                  <div className="tab-content render-view">
-                    <h2 className="no-print">Before & After: {projectName}</h2>
-                    {filePreview && generatedImage ? (
-                      <div className="before-after-slider">
-                        <img src={generatedImage} id="after-image" ref={afterImageRef} alt="After render"/>
-                        <img src={filePreview} id="before-image" alt="Before photo"/>
-                        <input type="range" id="slider-range" min="0" max="100" defaultValue="50" ref={sliderRef} onChange={handleSliderChange} aria-label="Before/After image slider"/>
-                        <div className="slider-handle" ref={sliderHandleRef}>
-                            <div className="slider-handle-icon">
-                                <span className="material-icons-outlined" style={{transform: 'rotate(90deg)'}}>unfold_more</span>
-                            </div>
+          {quote && (
+            <div className="tab-content">
+              <h2 className="no-print">Estimate for: {projectName}</h2>
+              <table className="quote-table">
+                <thead>
+                  <tr>
+                    <th style={{width: '40%'}}>Item</th>
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>
+                      <div className="rate-adjust-header no-print">
+                        <span>Adjust By</span>
+                        <div className="input-group">
+                            <input type="number" className="rate-adjust-input" value={rateAdjustPercent} onChange={e => setRateAdjustPercent(parseFloat(e.target.value) || 0)} />
+                            <span>%</span>
                         </div>
                       </div>
-                    ) : (
-                        <p>Render is not available.</p>
-                    )}
-                  </div>
-                )}
+                      <span className="print-only">Rate</span>
+                    </th>
+                    <th>Total</th>
+                    <th className="action-col"></th>
+                    <th className="action-col"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quote.lineItems.map((item, index) => (
+                    <tr key={index}>
+                      <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
+                      <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
+                      <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
+                      <td data-label="Rate">
+                          <div className="rate-adjust-cell">
+                              <input type="number" value={item.rate.toFixed(2)} onChange={e => handleItemChange(index, 'rate', e.target.value)} className="editable-cell" />
+                              <div className="rate-adjust-buttons no-print">
+                                  <button onClick={() => handleRateAdjust(index, 'up')} title={`Increase by ${rateAdjustPercent}%`}>▲</button>
+                                  <button onClick={() => handleRateAdjust(index, 'down')} title={`Decrease by ${rateAdjustPercent}%`}>▼</button>
+                              </div>
+                          </div>
+                      </td>
+                      <td data-label="Total"><input type="number" value={item.total.toFixed(2)} onChange={e => handleItemChange(index, 'total', e.target.value)} className="editable-cell" /></td>
+                      <td className="action-col" data-label="">
+                        <Tooltip text="Save this item and rate to your personal rate book for future use.">
+                            <button onClick={() => saveContractorRate(item)} className="save-rate-btn" title="Save Rate">
+                                <span className="material-icons-outlined">bookmark_add</span>
+                            </button>
+                        </Tooltip>
+                      </td>
+                      <td className="action-col" data-label="">
+                          <button onClick={() => handleRemoveItem(index)} className="remove-item-btn" title="Remove Item">
+                              <span className="material-icons-outlined">close</span>
+                          </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="quote-actions no-print">
+                  <button onClick={addManualItem} className="btn btn-secondary">
+                    <span className="material-icons-outlined">add</span>
+                    Add Line Item
+                  </button>
+                  <button onClick={applyContractorRates} className="btn btn-secondary" disabled={Object.keys(contractorRates).length === 0}>
+                    <span className="material-icons-outlined">auto_stories</span>
+                    Apply My Saved Rates
+                  </button>
               </div>
-            </>
+
+              <div className="quote-summary">
+                  <div className="quote-actions-bottom no-print">
+                      <div className="export-section">
+                          <button onClick={exportCSV}><span className="material-icons-outlined">download</span> Export as CSV</button>
+                          <button onClick={printPDF}><span className="material-icons-outlined">print</span> Print / Save as PDF</button>
+                      </div>
+                  </div>
+
+                  <p className="disclaimer">{quote.summary.disclaimer}</p>
+                  <table className="summary-table">
+                      <tbody>
+                          <tr><td>Subtotal</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.subtotal)}</td></tr>
+                          <tr>
+                              <td>
+                                  <div className="summary-label-group" data-percentage={overheadPercent}>
+                                      <span>Overhead</span>
+                                      <div className="input-group summary-input no-print">
+                                          <input type="number" value={overheadPercent} onChange={e => setOverheadPercent(parseFloat(e.target.value) || 0)} />
+                                          <span>%</span>
+                                      </div>
+                                  </div>
+                              </td>
+                              <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.overhead)}</td>
+                          </tr>
+                          <tr>
+                              <td>
+                                  <div className="summary-label-group" data-percentage={contingencyPercent}>
+                                      <span>Contingency</span>
+                                      <div className="input-group summary-input no-print">
+                                          <input type="number" value={contingencyPercent} onChange={e => setContingencyPercent(parseFloat(e.target.value) || 0)} />
+                                          <span>%</span>
+                                      </div>
+                                  </div>
+                              </td>
+                              <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.contingency)}</td>
+                          </tr>
+                          <tr>
+                              <td>
+                                <div className="summary-label-group" data-percentage={currentTaxRate}>
+                                    <span>Tax</span>
+                                    <span className="tax-rate-display no-print">({currentTaxRate}%)</span>
+                                </div>
+                              </td>
+                              <td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.tax)}</td>
+                          </tr>
+                          <tr className="total"><td>Grand Total</td><td style={{textAlign: 'right'}}>{formatCurrency(quote.summary.grandTotal)}</td></tr>
+                      </tbody>
+                  </table>
+              </div>
+            </div>
           )}
         </div>
       </section>
