@@ -627,12 +627,16 @@ Respond ONLY with a JSON object matching the provided schema.`;
         <div className="form-group">
             <label>Input Method</label>
             <div className="input-mode-toggle">
-                <button className={`toggle-btn ${inputMode === 'photo' ? 'active' : ''}`} onClick={() => setInputMode('photo')}>
-                    <span className="material-icons-outlined">photo_camera</span> Photo + Scope
-                </button>
-                <button className={`toggle-btn ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>
-                    <span className="material-icons-outlined">description</span> Detailed Description
-                </button>
+                <Tooltip text="Analyzes a photo and a brief scope of work. Best for when you have a clear image of the existing space.">
+                    <button className={`toggle-btn ${inputMode === 'photo' ? 'active' : ''}`} onClick={() => setInputMode('photo')}>
+                        <span className="material-icons-outlined">photo_camera</span> Photo + Scope
+                    </button>
+                </Tooltip>
+                <Tooltip text="Generates a quote from a detailed written description. A photo can be added for context but is not required. Ideal for pre-visit estimates.">
+                    <button className={`toggle-btn ${inputMode === 'text' ? 'active' : ''}`} onClick={() => setInputMode('text')}>
+                        <span className="material-icons-outlined">description</span> Detailed Description
+                    </button>
+                </Tooltip>
             </div>
         </div>
         

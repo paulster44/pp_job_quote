@@ -193,6 +193,12 @@ textarea.detailed-description {
     justify-content: center;
     gap: 0.5rem;
 }
+
+.input-mode-toggle .tooltip-container {
+    flex: 1;
+    display: flex;
+}
+
 .input-mode-toggle .toggle-btn.active {
     background-color: var(--surface-color);
     color: var(--text-color);
