@@ -154,6 +154,13 @@ const App: React.FC = () => {
   const [jobDescription, setJobDescription] = useState('');
 
   const currentTaxRate = TAX_RATES[region];
+  
+  const autoResizeTextarea = (element: HTMLTextAreaElement) => {
+    if (element) {
+        element.style.height = 'auto'; // Reset height to recalculate
+        element.style.height = `${element.scrollHeight}px`; // Set to content height
+    }
+  };
 
   useEffect(() => {
     try {
@@ -177,6 +184,16 @@ const App: React.FC = () => {
     }
   }, []);
   
+  // Auto-resize textareas on quote change
+  useEffect(() => {
+    if (quote) {
+        // Use a timeout to ensure this runs after the DOM has been updated by React
+        setTimeout(() => {
+            document.querySelectorAll<HTMLTextAreaElement>('.item-description').forEach(autoResizeTextarea);
+        }, 0);
+    }
+  }, [quote]);
+
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
@@ -772,7 +789,17 @@ Respond ONLY with a JSON object matching the provided schema.`;
                     const isRateSaved = contractorRates.hasOwnProperty(itemKey);
                     return (
                       <tr key={index}>
-                        <td data-label="Item"><input type="text" value={item.item} onChange={e => handleItemChange(index, 'item', e.target.value)} className="editable-cell" /></td>
+                        <td data-label="Item">
+                          <textarea 
+                            value={item.item} 
+                            onChange={e => {
+                              handleItemChange(index, 'item', e.target.value);
+                              autoResizeTextarea(e.target);
+                            }} 
+                            className="editable-cell item-description" 
+                            rows={1} 
+                          />
+                        </td>
                         <td data-label="Quantity"><input type="number" value={item.quantity.toString()} onChange={e => handleItemChange(index, 'quantity', e.target.value)} className="editable-cell" /></td>
                         <td data-label="Unit"><input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} className="editable-cell" /></td>
                         <td data-label="Rate">

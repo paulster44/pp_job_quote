@@ -374,6 +374,7 @@ body.dark-theme .btn.btn-secondary:disabled {
 .quote-table td {
   font-size: 0.95rem;
   color: var(--text-color);
+  vertical-align: top;
 }
 
 body.dark-theme .quote-table td {
@@ -389,6 +390,12 @@ body.dark-theme .quote-table td {
   width: 100%;
   padding: 0.3rem;
   border-radius: 4px;
+}
+
+.editable-cell.item-description {
+  resize: none;
+  overflow-y: hidden;
+  line-height: 1.6;
 }
 
 .editable-cell:focus {
@@ -987,7 +994,7 @@ body.dark-theme .loading-spinner {
       text-align: right;
   }
   .quote-table .action-col {
-    display: none;
+    display: none !important;
   }
   .quote-table td::before {
     display: none;
